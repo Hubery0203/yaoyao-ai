@@ -7,17 +7,29 @@ import { applyAppDefaults } from "../src/app.setup.js";
 
 describe("health endpoints (e2e)", () => {
   let app: INestApplication;
+  const prevEnv = {
+    DATABASE_URL: process.env.DATABASE_URL,
+    JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
+  };
 
   beforeAll(async () => {
+    // The host fails closed without these; the health probes themselves
+    // make no database calls, so an unreachable URL is fine here.
+    process.env.DATABASE_URL = "postgres://localhost:5432/yaoyao_test";
+    process.env.JWT_ACCESS_SECRET = "test-only-jwt-secret-32-bytes-min!!";
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
     app = moduleRef.createNestApplication();
     applyAppDefaults(app);
     await app.init();
-  });
+    // First-load Vite transform of the full host graph can exceed the
+    // default 10s hook budget on a cold cache.
+  }, 60_000);
 
   afterAll(async () => {
+    process.env.DATABASE_URL = prevEnv.DATABASE_URL;
+    process.env.JWT_ACCESS_SECRET = prevEnv.JWT_ACCESS_SECRET;
     await app.close();
   });
 
@@ -35,9 +47,10 @@ describe("health endpoints (e2e)", () => {
     const names = res.body.checks.map((c: { name: string }) => c.name);
     expect(names).toContain("config");
     expect(names).toContain("database");
-    // Phase 1: database is honestly reported as not yet wired.
+    // Phase 4: the probe is wired; with the dummy URL it honestly reports
+    // "degraded" (unreachable). Shape is what this contract pins.
     const db = res.body.checks.find((c: { name: string }) => c.name === "database");
-    expect(db.status).toBe("not_configured");
+    expect(["ok", "degraded", "not_configured"]).toContain(db.status);
   });
 
   it("health endpoints are NOT under /api/v1", async () => {

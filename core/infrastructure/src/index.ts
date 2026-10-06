@@ -12,3 +12,10 @@ export type { AppConfig } from "./config/env.js";
 export { createLogger } from "./observability/logger.js";
 export { createRedisConnection } from "./redis/connection.js";
 export * from "./postgres/index.js";
+export { Argon2PasswordHasher } from "./auth/password-hasher.js";
+export {
+  JwtTokenService,
+  tokenServiceOptionsFromConfig,
+} from "./auth/token-service.js";
+export { PostgresAuthCredentialRepository } from "./auth/auth-credentials.js";
+export { PostgresHealthProbe } from "./auth/health-probe.js";

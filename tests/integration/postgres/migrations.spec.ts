@@ -101,17 +101,26 @@ describe.skipIf(!HAS_DOCKER)("migrations: empty database to schema head", () => 
     const { rows } = await db.adminPool.query<{ version: string; checksum: string }>(
       `SELECT version, checksum FROM schema_migrations`,
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].version).toBe("0001_initial_schema");
-    expect(rows[0].checksum).toMatch(/^[0-9a-f]{64}$/);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.version)).toEqual([
+      "0001_initial_schema",
+      "0002_auth_lookup",
+    ]);
+    for (const row of rows) {
+      expect(row.checksum).toMatch(/^[0-9a-f]{64}$/);
+    }
     const discovered = await discoverMigrations(MIGRATIONS_DIR);
-    expect(discovered[0].checksum).toBe(rows[0].checksum);
+    for (const row of rows) {
+      expect(
+        discovered.find((d) => d.version === row.version)?.checksum,
+      ).toBe(row.checksum);
+    }
   });
 
   it("passes the read-only startup compatibility check", async () => {
     const check = await checkSchemaCompatibility(db.adminPool, MIGRATIONS_DIR);
     expect(check.compatible).toBe(true);
-    expect(check.appliedHead).toBe("0001_initial_schema");
+    expect(check.appliedHead).toBe("0002_auth_lookup");
   });
 
   it("refuses a checksum-mismatched migration file", async () => {
@@ -136,6 +145,6 @@ describe.skipIf(!HAS_DOCKER)("migrations: empty database to schema head", () => 
   it("is idempotent: re-running applies nothing new", async () => {
     const run = await applyMigrations(db.adminPool, MIGRATIONS_DIR, "test");
     expect(run.applied).toEqual([]);
-    expect(run.alreadyApplied).toEqual(["0001_initial_schema"]);
+    expect(run.alreadyApplied).toEqual(["0001_initial_schema", "0002_auth_lookup"]);
   });
 });

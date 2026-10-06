@@ -91,7 +91,12 @@ export async function setupDatabase(): Promise<TestDatabase> {
   });
 
   const run = await applyMigrations(adminPool, MIGRATIONS_DIR, "test-harness");
-  if (run.applied.length !== 1 || run.applied[0] !== "0001_initial_schema") {
+  const applied = run.applied;
+  if (
+    applied.length !== 2 ||
+    applied[0] !== "0001_initial_schema" ||
+    applied[1] !== "0002_auth_lookup"
+  ) {
     throw new Error(`unexpected migration run: ${JSON.stringify(run)}`);
   }
 
