@@ -49,16 +49,23 @@ describe.skipIf(!HAS_DOCKER)("T010: concurrent compare-and-swap", () => {
     const userId = newUserId();
     const { yaoyaoId } = await initUser(db, userId);
 
-    // Both racers read version 1 over independent pooled connections.
+    // Read version 1 deterministically BEFORE the race: both writers must
+    // attempt a version-1 -> 2 CAS. Reading inside the race lets the loser
+    // observe the winner's version 2 and attempt a version-3 write, which
+    // the repository correctly refuses as an incoherent jump.
+    const v1 = await db.manager.runAsUser(userId, (tx) =>
+      tx.states.findOwned(userId),
+    );
+    expect(v1.stateVersion).toBe(1);
+
+    // Both racers CAS on version 1 over independent pooled connections.
     const race = await Promise.all([
-      db.manager.runAsUser(userId, async (tx) => {
-        const state = await tx.states.findOwned(userId);
-        const next = state.transition(state.stateVersion, { energy: 0.11 });
+      db.manager.runAsUser(userId, (tx) => {
+        const next = v1.transition(v1.stateVersion, { energy: 0.11 });
         return tx.states.saveStateIfVersionMatches(userId, 1, next);
       }),
-      db.manager.runAsUser(userId, async (tx) => {
-        const state = await tx.states.findOwned(userId);
-        const next = state.transition(state.stateVersion, { energy: 0.22 });
+      db.manager.runAsUser(userId, (tx) => {
+        const next = v1.transition(v1.stateVersion, { energy: 0.22 });
         return tx.states.saveStateIfVersionMatches(userId, 1, next);
       }),
     ]);

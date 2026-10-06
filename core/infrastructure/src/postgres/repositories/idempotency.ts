@@ -17,7 +17,7 @@ import {
 import { uuidv7 } from "@yaoyao/domain";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db.js";
-import { isUniqueViolation, mapPgError } from "../errors.js";
+import { mapPgError } from "../errors.js";
 import {
   digestsEqual,
   idempotencyKeyHash,
@@ -48,20 +48,35 @@ export class PostgresIdempotencyStore implements IdempotencyStore {
       now.getTime() + (input.ttlSeconds ?? DEFAULT_TTL_SECONDS) * 1000,
     );
     try {
-      await this.db.insert(idempotencyRecords).values(
-        toIdempotencyRow({
-          idempotencyRecordId: uuidv7(),
-          userScope: input.userScope,
-          keyHash,
-          operation: input.operation,
-          requestHash: reqHash,
-          status: "processing",
-          expiresAt,
-        }),
-      );
-      return { outcome: "claimed" };
+      // Claim the slot. ON CONFLICT DO NOTHING keeps the transaction usable:
+      // a plain INSERT that hits the unique index would abort the transaction
+      // (PostgreSQL), making the follow-up SELECT of the existing record
+      // fail with "current transaction is aborted". With DO NOTHING the
+      // loser simply observes the winner's committed record below.
+      const claimed = await this.db
+        .insert(idempotencyRecords)
+        .values(
+          toIdempotencyRow({
+            idempotencyRecordId: uuidv7(),
+            userScope: input.userScope,
+            keyHash,
+            operation: input.operation,
+            requestHash: reqHash,
+            status: "processing",
+            expiresAt,
+          }),
+        )
+        .onConflictDoNothing({
+          target: [
+            idempotencyRecords.userScope,
+            idempotencyRecords.operation,
+            idempotencyRecords.keyHash,
+          ],
+        })
+        .returning({ id: idempotencyRecords.idempotencyRecordId });
+      if (claimed.length === 1) return { outcome: "claimed" };
     } catch (e) {
-      if (!isUniqueViolation(e)) throw mapPgError(e, "IdempotencyRecord");
+      throw mapPgError(e, "IdempotencyRecord");
     }
     // A record already exists: observe it (possibly reclaim if expired).
     const existing = await this.findRaw(input.userScope, input.operation, keyHash);

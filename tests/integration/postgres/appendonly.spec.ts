@@ -38,6 +38,10 @@ describe.skipIf(!HAS_DOCKER)("events are append-only", () => {
 
     const client = await db.appPool.connect();
     try {
+      // SET LOCAL (set_config with is_local=true) only applies inside a
+      // transaction block; without BEGIN the context is never set and RLS
+      // hides every row.
+      await client.query("BEGIN");
       await client.query("SELECT set_config('app.user_id', $1, true)", [
         userId as string,
       ]);
@@ -46,6 +50,7 @@ describe.skipIf(!HAS_DOCKER)("events are append-only", () => {
         [eventId],
       );
       before = rows[0] as Record<string, unknown>;
+      await client.query("COMMIT");
     } finally {
       client.release();
     }
@@ -58,6 +63,7 @@ describe.skipIf(!HAS_DOCKER)("events are append-only", () => {
   it("rejects UPDATE as the app role", async () => {
     const client = await db.appPool.connect();
     try {
+      await client.query("BEGIN");
       await client.query("SELECT set_config('app.user_id', $1, true)", [
         userId as string,
       ]);
@@ -66,6 +72,7 @@ describe.skipIf(!HAS_DOCKER)("events are append-only", () => {
           eventId,
         ]),
       ).rejects.toThrow(/append-only|permission denied/i);
+      await client.query("ROLLBACK");
     } finally {
       client.release();
     }
@@ -74,12 +81,14 @@ describe.skipIf(!HAS_DOCKER)("events are append-only", () => {
   it("rejects DELETE as the app role", async () => {
     const client = await db.appPool.connect();
     try {
+      await client.query("BEGIN");
       await client.query("SELECT set_config('app.user_id', $1, true)", [
         userId as string,
       ]);
       await expect(
         client.query(`DELETE FROM events WHERE event_id = $1`, [eventId]),
       ).rejects.toThrow(/append-only|permission denied/i);
+      await client.query("ROLLBACK");
     } finally {
       client.release();
     }
