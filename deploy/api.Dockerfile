@@ -12,7 +12,12 @@ COPY core/api/package.json core/api/
 RUN npm ci
 # Copy sources and build all workspace packages.
 COPY tsconfig.base.json tsconfig.json ./
-COPY apps core db scripts tests drizzle.config.ts ./
+COPY apps ./apps
+COPY core ./core
+COPY db ./db
+COPY scripts ./scripts
+COPY tests ./tests
+COPY drizzle.config.ts ./
 RUN npm run build
 
 FROM node:24.20.0-alpine AS runner
