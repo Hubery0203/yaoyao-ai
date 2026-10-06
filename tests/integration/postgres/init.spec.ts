@@ -164,7 +164,7 @@ describe.skipIf(!HAS_DOCKER)("T001: atomic first initialization", () => {
 
   it("returns the stored result on idempotent retry (same key + body)", async () => {
     const userId = newUserId();
-    const key = `init-key-${userId.slice(0, 8)}`;
+    const key = `init-key-${userId}`;
     const body = JSON.stringify({ email: "idem@example.com" });
     const first = await initOnce(db, userId, { key, requestBody: body });
     expect(first.duplicate).toBe(false);
@@ -195,7 +195,7 @@ describe.skipIf(!HAS_DOCKER)("T001: atomic first initialization", () => {
 
   it("rejects the same idempotency key with a different body", async () => {
     const userId = newUserId();
-    const key = `init-key2-${userId.slice(0, 8)}`;
+    const key = `init-key2-${userId}`;
     await initOnce(db, userId, { key, requestBody: '{"a":1}' });
     await expect(
       db.manager.runAsUser(userId, (tx) =>
