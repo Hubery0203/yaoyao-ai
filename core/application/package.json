@@ -1,0 +1,1 @@
+{"dependencies":{"@yaoyao/domain":"0.1.0"},"description":"YaoYao Core — application layer. Use cases, orchestration, ports, transaction boundaries. Depends on @yaoyao/domain only.","main":"dist/index.js","name":"@yaoyao/application","private":true,"scripts":{"build":"tsc -b"},"types":"dist/index.d.ts","version":"0.1.0"}

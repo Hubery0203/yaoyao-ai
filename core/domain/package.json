@@ -1,0 +1,1 @@
+{"description":"YaoYao Core — domain layer. Framework-free: aggregates, value objects, invariants, policies. Standard library only.","main":"dist/index.js","name":"@yaoyao/domain","private":true,"scripts":{"build":"tsc -b"},"types":"dist/index.d.ts","version":"0.1.0"}

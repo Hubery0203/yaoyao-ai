@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# env & secrets — never commit
+.env
+.env.*.local
+*.pem
+*.key
+
+# test / coverage
+coverage/
+.nyc_output/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+
+# docker
+.dockerignore
+
+# local data volumes
+deploy/data/

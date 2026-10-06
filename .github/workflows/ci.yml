@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# CI order (Technical Proposal §13): lint + boundaries → unit → migration +
+# integration → e2e + security → image build. Merge requires T001–T012 and
+# architecture checks green.
+
+jobs:
+  lint-boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.20.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run boundaries
+
+  unit-contract:
+    runs-on: ubuntu-latest
+    needs: lint-boundaries
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.20.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:unit
+      - run: npm run test:contract
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: lint-boundaries
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: yaoyao_test
+          POSTGRES_PASSWORD: yaoyao_test
+          POSTGRES_DB: yaoyao_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yaoyao_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7.4.1
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://yaoyao_test:yaoyao_test@localhost:5432/yaoyao_test
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.20.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run tests/integration
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [unit-contract, integration]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.20.0"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:e2e
+
+  image:
+    runs-on: ubuntu-latest
+    needs: [unit-contract, integration, e2e]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/api.Dockerfile -t yaoyao-ai/api:ci .
+      - run: docker build -f deploy/worker.Dockerfile -t yaoyao-ai/worker:ci .

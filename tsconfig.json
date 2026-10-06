@@ -1,0 +1,1 @@
+{"compilerOptions":{"composite":false,"incremental":false,"noEmit":true},"extends":"./tsconfig.base.json","files":[],"references":[{"path":"core/domain"},{"path":"core/application"},{"path":"core/infrastructure"},{"path":"core/api"},{"path":"apps/api"},{"path":"apps/worker"}]}
