@@ -373,8 +373,12 @@ BEGIN
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
     EXECUTE format('DROP POLICY IF EXISTS %I ON %I', t || '_owner', t);
+    -- Owner predicate: NULLIF hardens the policy against an empty (but set)
+    -- app.user_id — an empty context must fail closed (see no rows), not
+    -- raise 22P02 on the ::uuid cast. A missing context already yields NULL
+    -- via missing_ok=true and behaves the same way.
     EXECUTE format(
-      'CREATE POLICY %I ON %I USING (user_id = current_setting(''app.user_id'', true)::uuid) WITH CHECK (user_id = current_setting(''app.user_id'', true)::uuid)',
+      'CREATE POLICY %I ON %I USING (user_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid) WITH CHECK (user_id = NULLIF(current_setting(''app.user_id'', true), '''')::uuid)',
       t || '_owner', t
     );
   END LOOP;
