@@ -130,11 +130,16 @@ describe("replay diagnostics", () => {
     expect(after).toEqual(before);
 
     // Explicit event/outbox assertions (PM rule 3c/d).
+    // Scoped to THIS test's user: earlier tests in this file registered
+    // their own users in the same database, so a whole-table count would
+    // include their events (6 per prior test) and flake with test order.
     const { rows: eventRows } = await ctx.db.adminPool.query(
-      `SELECT count(*)::int AS c FROM events`,
+      `SELECT count(*)::int AS c FROM events WHERE user_id = $1`,
+      [me.userId],
     );
     const { rows: outboxRows } = await ctx.db.adminPool.query(
-      `SELECT count(*)::int AS c FROM outbox`,
+      `SELECT count(*)::int AS c FROM outbox WHERE user_id = $1`,
+      [me.userId],
     );
     // 5 init + 1 session-started = 6 events; outbox untouched by replay.
     expect(eventRows[0].c).toBe(6);
