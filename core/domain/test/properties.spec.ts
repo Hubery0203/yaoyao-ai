@@ -82,7 +82,7 @@ describe("property: frozen relationship invariants hold under any allowed operat
         expect(() => r.changeType(s)).toThrow();
         expect(() => r.setTerminationAllowed(b)).toThrow();
       }),
-      { numRuns: 100 },
+      { numRuns: 200 },
     );
   });
 });
@@ -148,7 +148,7 @@ describe("property: identifiers", () => {
           expect(isUuidV7(id)).toBe(true);
         }
       }),
-      { numRuns: 50 },
+      { numRuns: 200 },
     );
   });
 });

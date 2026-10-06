@@ -39,18 +39,11 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     needs: lint-boundaries
+    # Phase 3: integration tests use Testcontainers directly (pinned
+    # pgvector/pgvector:0.8.0-pg16 image, real migrations, real roles), so
+    # the same code controls image version, lifecycle, and role setup.
+    # The runner provides Docker; no postgres service container needed.
     services:
-      postgres:
-        image: pgvector/pgvector:0.8.0-pg16
-        env:
-          POSTGRES_USER: yaoyao_test
-          POSTGRES_PASSWORD: yaoyao_test
-          POSTGRES_DB: yaoyao_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U yaoyao_test"
-          --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7.4.1
         ports:
@@ -59,7 +52,6 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 10s --health-timeout 5s --health-retries 5
     env:
-      DATABASE_URL: postgres://yaoyao_test:yaoyao_test@localhost:5432/yaoyao_test
       REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
