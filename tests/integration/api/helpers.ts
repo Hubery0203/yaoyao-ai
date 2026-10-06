@@ -134,7 +134,14 @@ export async function setupApi(): Promise<ApiTestContext> {
       // our named throttler config); the integration suites bypass it so
       // many test users can authenticate within one run. The throttler
       // decorators and named limits remain on the production routes.
-      .overrideGuard(ThrottlerGuard)
+      //
+      // NOTE: overrideProvider (not overrideGuard) is required here.
+      // overrideGuard only matches the internal `_injectables` collection,
+      // but APP_GUARD-registered guards live in `_providers`, so the
+      // override is silently ignored and tests get 429s. The guard IS a
+      // provider (registered under its own class token in AppModule with
+      // APP_GUARD as a useExisting alias), so overrideProvider hits it.
+      .overrideProvider(ThrottlerGuard)
       .useValue({ canActivate: () => true })
       .compile();
     app = moduleRef.createNestApplication();

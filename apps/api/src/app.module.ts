@@ -48,8 +48,14 @@ import { CoreProvidersModule } from "./core-providers.module.js";
     ]),
   ],
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Registered under their own class tokens (with APP_GUARD as useExisting
+    // aliases) so integration tests can overrideGuard(ThrottlerGuard) /
+    // overrideGuard(JwtAuthGuard) precisely. Overriding by the APP_GUARD
+    // token would hit both guards at once and cannot target one.
+    ThrottlerGuard,
+    JwtAuthGuard,
+    { provide: APP_GUARD, useExisting: ThrottlerGuard },
+    { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_FILTER, useClass: DomainExceptionFilter },
   ],
 })
