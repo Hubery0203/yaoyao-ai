@@ -16,10 +16,15 @@ interface PgErrorLike {
   message?: string;
 }
 
-function asPgError(e: unknown): PgErrorLike | null {
-  if (e !== null && typeof e === "object" && "code" in e) {
+function asPgError(e: unknown, depth = 0): PgErrorLike | null {
+  if (e === null || typeof e !== "object" || depth > 5) return null;
+  if ("code" in e && typeof (e as { code?: unknown }).code === "string") {
     return e as PgErrorLike;
   }
+  // Drizzle wraps driver errors (query/params on the outer error, the pg
+  // error with its SQLSTATE `code` nested under `cause`). Unwrap so mapped
+  // outcomes (e.g. 23505 -> DuplicateEntityError) survive the wrapper.
+  if ("cause" in e) return asPgError((e as { cause?: unknown }).cause, depth + 1);
   return null;
 }
 

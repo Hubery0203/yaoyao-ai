@@ -30,7 +30,7 @@ describe.skipIf(!HAS_DOCKER)("events are append-only", () => {
     const result = await db.manager.runAsUser(userId, (tx: PersistenceTransaction) =>
       initializeYaoYao(tx, {
         userId,
-        email: `ao-${userId.slice(0, 8)}@example.com`,
+        email: `ao-${userId}@example.com`,
         passwordHash: "h",
       }),
     );

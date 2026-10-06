@@ -28,7 +28,7 @@ async function initUser(db: TestDatabase, userId: UserId) {
   return db.manager.runAsUser(userId, (tx: PersistenceTransaction) =>
     initializeYaoYao(tx, {
       userId,
-      email: `cc-${userId.slice(0, 8)}@example.com`,
+      email: `cc-${userId}@example.com`,
       passwordHash: "h",
     }),
   );

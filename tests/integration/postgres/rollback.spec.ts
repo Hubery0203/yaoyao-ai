@@ -56,7 +56,7 @@ async function initWithFault(
   const maybeFail = (step: typeof failAfter) => {
     if (step === failAfter) throw new Error(`injected fault after ${step}`);
   };
-  const email = `fault-${userId.slice(0, 8)}@example.com`;
+  const email = `fault-${userId}@example.com`;
   const user = User.create({ userId });
   const aggregate = YaoYaoAggregate.create({ userId });
   const containerId = newMemoryContainerId();
@@ -145,7 +145,7 @@ describe.skipIf(!HAS_DOCKER)("T009: rollback leaves nothing behind", () => {
       db.manager.runAsUser(userId, async (tx) => {
         await initializeYaoYao(tx, {
           userId,
-          email: `real-${userId.slice(0, 8)}@example.com`,
+          email: `real-${userId}@example.com`,
           passwordHash: "h",
         });
         throw new Error("caller blew up before commit");
@@ -165,7 +165,7 @@ describe.skipIf(!HAS_DOCKER)("T009: rollback leaves nothing behind", () => {
     const result = await db.manager.runAsUser(userId, (tx) =>
       initializeYaoYao(tx, {
         userId,
-        email: `retry-${userId.slice(0, 8)}@example.com`,
+        email: `retry-${userId}@example.com`,
         passwordHash: "h",
       }),
     );

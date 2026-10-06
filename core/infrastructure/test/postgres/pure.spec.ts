@@ -110,3 +110,42 @@ describe("migration discovery and checksums", () => {
     }
   });
 });
+
+describe("mapPgError driver-error unwrapping", () => {
+  it("maps a bare 23505 to DuplicateEntityError", async () => {
+    const { mapPgError } = await import("@yaoyao/infrastructure");
+    const { DuplicateEntityError } = await import("@yaoyao/application");
+    const err = mapPgError(
+      Object.assign(new Error("duplicate"), {
+        code: "23505",
+        constraint: "users_email_unique",
+      }),
+      "User",
+    );
+    expect(err).toBeInstanceOf(DuplicateEntityError);
+  });
+
+  it("unwraps a Drizzle-wrapped 23505 to DuplicateEntityError", async () => {
+    const { mapPgError } = await import("@yaoyao/infrastructure");
+    const { DuplicateEntityError } = await import("@yaoyao/application");
+    const pgError = Object.assign(new Error("duplicate key value"), {
+      code: "23505",
+      constraint: "users_email_unique",
+    });
+    const drizzleWrapped = Object.assign(
+      new Error('Failed query: insert into "users"'),
+      { cause: pgError },
+    );
+    const err = mapPgError(drizzleWrapped, "User");
+    expect(err).toBeInstanceOf(DuplicateEntityError);
+  });
+
+  it("keeps PERSISTENCE_UNKNOWN for genuinely unknown wrapped errors", async () => {
+    const { mapPgError } = await import("@yaoyao/infrastructure");
+    const wrapped = Object.assign(new Error("boom"), {
+      cause: new Error("no code anywhere"),
+    });
+    const err = mapPgError(wrapped, "User");
+    expect(err.code).toBe("PERSISTENCE_UNKNOWN");
+  });
+});

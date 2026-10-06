@@ -36,7 +36,7 @@ async function initOnce(
   return db.manager.runAsUser(userId, (tx: PersistenceTransaction) =>
     initializeYaoYao(tx, {
       userId,
-      email: `u-${userId.slice(0, 8)}@example.com`,
+      email: `u-${userId}@example.com`,
       passwordHash: "argon2id$test-hash",
       ...(idempotency
         ? {
