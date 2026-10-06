@@ -69,7 +69,13 @@ export async function setupDatabase(): Promise<TestDatabase> {
     })
     .withExposedPorts(5432)
     .withWaitStrategy(
-      Wait.forLogMessage(/database system is ready to accept connections/),
+      // The official postgres entrypoint logs "database system is ready to
+      // accept connections" TWICE on first boot: once for the temporary
+      // bootstrap server (initdb/setup, then shut down) and once for the
+      // real server. Waiting for only the first occurrence lets the harness
+      // connect while postgres is restarting -> "connection terminated
+      // unexpectedly" on the first query. Require both occurrences.
+      Wait.forLogMessage(/database system is ready to accept connections/, 2),
     )
     .withStartupTimeout(120_000)
     .start();
