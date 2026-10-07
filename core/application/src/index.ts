@@ -10,6 +10,7 @@ export * from "./ports/security.js";
 export * from "./ports/llm.js";
 export * from "./ports/context-data.js";
 export * from "./ports/memory-retrieval.js";
+export * from "./ports/emotion.js";
 export {
   initializeYaoYao,
   type InitializeYaoYaoInput,
@@ -53,3 +54,4 @@ export {
   type ReplayTraceEntry,
   type ReplayDiff,
 } from "./usecases/replay.js";
+export { applyEmotionProposal } from "./usecases/emotion.js";

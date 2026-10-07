@@ -13,3 +13,7 @@ export {
   STRUCTURED_OUTPUT_INSTRUCTION,
   type LLMOutputShape,
 } from "./schema.js";
+export {
+  EmotionProposalSchema,
+  type EmotionProposalShape,
+} from "./emotion-schema.js";

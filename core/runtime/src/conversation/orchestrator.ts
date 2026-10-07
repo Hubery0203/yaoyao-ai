@@ -28,15 +28,23 @@ import {
   EmptyMemoryRetrieval,
   unwrapProposal,
   type ContextDataPort,
+  type EmotionInterpreter,
+  type EmotionStateWriter,
   type LLMRequest,
   type MemoryRetrieval,
   type RuntimeDecision,
 } from "@yaoyao/application";
-import type { UserId, YaoYaoId } from "@yaoyao/domain";
+import {
+  EMOTION_DIMENSIONS,
+  type EmotionDimension,
+  type UserId,
+  type YaoYaoId,
+} from "@yaoyao/domain";
 import { randomUUID } from "node:crypto";
 import { ContextAssembler } from "../context/assembly.js";
 import { createTrace } from "../contracts/trace.js";
 import { validateProposalMinimal } from "../validation/minimal.js";
+import { validateEmotionProposal } from "../emotion/validation.js";
 import { AIRouter } from "../router/router.js";
 import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
@@ -50,6 +58,18 @@ export interface OrchestratorDeps {
    * working. Production wiring injects the Postgres adapter.
    */
   readonly memoryRetrieval?: MemoryRetrieval;
+  /**
+   * MVP-002E: Emotion Interpreter port. Optional — when absent, Step 8
+   * records "skipped: no interpreter wired" and performs no write-back.
+   * Production wiring injects RouterEmotionInterpreter.
+   */
+  readonly emotionInterpreter?: EmotionInterpreter;
+  /**
+   * MVP-002E: Emotion State Writer port. Optional — when absent, validated
+   * proposals are not persisted. Production wiring injects
+   * TransactionalEmotionWriter.
+   */
+  readonly emotionWriter?: EmotionStateWriter;
 }
 
 /** NestJS injection token for the ConversationOrchestrator. */
@@ -205,13 +225,95 @@ export class ConversationOrchestrator {
     };
     executedSteps.push("behavior-validation");
 
-    // Step 8 — State / Memory Processing: SKELETON NO-OP.
-    // I-016: zero writes. Real write-back arrives in 002E.
-    (trace as { writeback?: unknown }).writeback = {
+    // Step 8 — State / Memory Processing (REAL in MVP-002E).
+    // I-016 chain: interpret → validate → domain transition → CAS →
+    // STATE_CHANGED → commit. The interpreter only proposes; the domain
+    // disposes. Response-critical: persisted before response delivery.
+    const writebackTrace: Record<string, unknown> = {
       stateChanged: false,
       eventsCommitted: 0,
-      note: "skeleton: no writes in MVP-002B (I-016: no Proposal→save path exists)",
     };
+    if (this.deps.emotionInterpreter && this.deps.emotionWriter) {
+      const emotionStart = Date.now();
+      try {
+        // Current emotion state (Emotion State layer) from Step 4.
+        const currentEmotion = Object.fromEntries(
+          EMOTION_DIMENSIONS.map((d) => [d, personaData.state.emotion.get(d)]),
+        ) as Record<EmotionDimension, number>;
+
+        // 1. Interpret (proposal only — no persistence path).
+        const { proposal, telemetry } = await this.deps.emotionInterpreter.interpret({
+          userId: input.userId as UserId,
+          yaoyaoId: personaData.yaoyao.yaoyaoId as YaoYaoId,
+          currentInput: input.text,
+          situation: {
+            intent: situation.intent,
+            urgency: situation.urgency,
+            taskNature: situation.taskNature,
+          },
+          relationshipContext: {
+            type: personaData.relationship.type,
+            status: personaData.relationship.status,
+          },
+          currentEmotion,
+          recentConversation: [],
+          relevantMemories: memoryContext.memories.map((m) => m.summary),
+          traceId: input.traceId,
+        });
+        writebackTrace["emotionInterpreterLatencyMs"] = Date.now() - emotionStart;
+        writebackTrace["interpreterProvider"] = telemetry.providerId;
+        writebackTrace["interpreterModel"] = telemetry.modelId;
+        writebackTrace["interpreterFallbackUsed"] = telemetry.fallbackUsed;
+
+        // 2. Validate (the gate).
+        const validation = validateEmotionProposal(proposal);
+        if (!validation.accepted) {
+          writebackTrace["proposalAccepted"] = false;
+          writebackTrace["validationFailureReason"] = validation.reason;
+        } else {
+          writebackTrace["proposalAccepted"] = true;
+          writebackTrace["proposalRejected"] = false;
+          if (validation.clamped.length > 0) {
+            writebackTrace["clampedDimensions"] = [...validation.clamped];
+          }
+
+          // 3. Transactional write-back (domain transition → CAS → event).
+          const result = await this.deps.emotionWriter.writeback({
+            userId: input.userId as UserId,
+            yaoyaoId: personaData.yaoyao.yaoyaoId as YaoYaoId,
+            deltas: validation.deltas,
+            expectedVersion: personaData.state.stateVersion,
+            traceId: input.traceId,
+          });
+
+          if (result.outcome === "applied") {
+            writebackTrace["stateChanged"] = true;
+            writebackTrace["eventsCommitted"] = 1;
+            writebackTrace["stateTransitionSuccess"] = true;
+            writebackTrace["newStateVersion"] = result.newVersion;
+            writebackTrace["eventId"] = result.eventId;
+          } else if (result.outcome === "conflict") {
+            writebackTrace["stateTransitionSuccess"] = false;
+            writebackTrace["casConflict"] = true;
+            writebackTrace["casExpected"] = result.expected;
+            writebackTrace["casCurrent"] = result.current;
+          } else {
+            writebackTrace["stateTransitionSuccess"] = true;
+            writebackTrace["note"] = "no-change: empty deltas";
+          }
+        }
+      } catch (err) {
+        // Emotion processing must never break the conversation turn.
+        // Record the failure; the response still delivers.
+        writebackTrace["stateTransitionSuccess"] = false;
+        writebackTrace["error"] =
+          err instanceof Error ? err.message : String(err);
+      }
+    } else {
+      writebackTrace["note"] =
+        "skipped: emotion interpreter/writer not wired (no-op in unit tests)";
+    }
+    (trace as { writeback?: unknown }).writeback = writebackTrace;
     executedSteps.push("state-memory-processing");
 
     // Step 9 — Response Delivery: the ONLY legal unwrap site.

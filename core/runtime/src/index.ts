@@ -31,6 +31,11 @@ export {
   type ResilienceConfig,
   type ResilientResult,
 } from "./router/resilient.js";
+export { RouterEmotionInterpreter } from "./emotion/interpreter.js";
+export {
+  validateEmotionProposal,
+  type ValidationOutcome,
+} from "./emotion/validation.js";
 export { estimateUsage, DEFAULT_PRICING, type ModelPricing, type PricingTable } from "./router/usage.js";
 export { PersonaRuntime } from "./persona/persona-runtime.js";
 export {

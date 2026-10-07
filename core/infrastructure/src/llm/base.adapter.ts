@@ -27,6 +27,8 @@ import {
 } from "@yaoyao/application";
 import OpenAI from "openai";
 import { LLMOutputSchema, STRUCTURED_OUTPUT_INSTRUCTION } from "./schema.js";
+import { EmotionProposalSchema } from "./emotion-schema.js";
+import { EMOTION_PROPOSAL_SCHEMA_NAME } from "@yaoyao/application";
 
 export interface AdapterConfig {
   readonly providerId: string;
@@ -103,14 +105,19 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
       });
     }
 
-    return this.parseProposal(raw);
+    return this.parseProposal(raw, request.outputSchemaName);
   }
 
   /**
    * Parse + schema-validate the raw JSON. Returns Proposal-wrapped fields.
    * Exported for unit tests (C02/C03 response mapping).
+   *
+   * MVP-002E: dispatches on outputSchemaName. The emotion-proposal-v1
+   * schema validates the interpreter's dedicated output and places the
+   * parsed proposal in `emotion_signal`; other fields are empty defaults.
+   * The default (conversation) schema behavior is unchanged.
    */
-  parseProposal(raw: string): LLMProposal {
+  parseProposal(raw: string, outputSchemaName?: string): LLMProposal {
     let json: unknown;
     try {
       json = JSON.parse(raw);
@@ -122,6 +129,12 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
         retryable: true,
       });
     }
+
+    // MVP-002E: emotion-proposal-v1 dispatches to the interpreter schema.
+    if (outputSchemaName === EMOTION_PROPOSAL_SCHEMA_NAME) {
+      return this.parseEmotionProposal(json);
+    }
+
     const parsed = LLMOutputSchema.safeParse(json);
     if (!parsed.success) {
       throw new ProviderError({
@@ -199,6 +212,33 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
       message: "unexpected provider error",
       retryable: false,
     });
+  }
+
+  /**
+   * MVP-002E: validate the interpreter's dedicated output. The parsed
+   * proposal is placed in `emotion_signal`; all other fields are empty
+   * defaults (the interpreter call is not a conversation turn).
+   */
+  private parseEmotionProposal(json: unknown): LLMProposal {
+    const parsed = EmotionProposalSchema.safeParse(json);
+    if (!parsed.success) {
+      throw new ProviderError({
+        code: "INVALID_RESPONSE",
+        providerId: this.providerId,
+        message: `emotion proposal failed schema validation: ${parsed.error.issues
+          .slice(0, 3)
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; ")}`,
+        retryable: true,
+      });
+    }
+    return {
+      response: asProposal(""),
+      emotion_signal: asProposal(parsed.data),
+      memory_candidates: asProposal([]),
+      relationship_signal: asProposal({}),
+      behavior: asProposal({}),
+    };
   }
 }
 

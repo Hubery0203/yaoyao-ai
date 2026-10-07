@@ -2,11 +2,15 @@ import { Global, Inject, Module, type OnModuleDestroy } from "@nestjs/common";
 import {
   AUTH_CREDENTIALS,
   CONTEXT_DATA,
+  EMOTION_INTERPRETER,
+  EMOTION_STATE_WRITER,
   HEALTH_PROBE,
   MEMORY_RETRIEVAL,
   PASSWORD_HASHER,
   TOKEN_SERVICE,
   TRANSACTION_MANAGER,
+  type EmotionInterpreter,
+  type EmotionStateWriter,
   type MemoryRetrieval,
 } from "@yaoyao/application";
 import {
@@ -29,8 +33,10 @@ import {
   AIRouter,
   ConversationOrchestrator,
   MockLLMProvider,
+  RouterEmotionInterpreter,
 } from "@yaoyao/runtime";
 import { TransactionalContextDataAdapter } from "./persona-context.adapter.js";
+import { TransactionalEmotionWriter } from "./emotion-writer.adapter.js";
 import type { LLMProvider } from "@yaoyao/application";
 
 /**
@@ -149,11 +155,41 @@ const PG_POOL = "YAOYAO_PG_POOL";
       inject: [PG_POOL],
       useFactory: (pool: Pool) => new PostgresMemoryRetrievalAdapter(pool),
     },
+    // MVP-002E: Emotion Interpreter (via AI Router, L1) + transactional
+    // state writer. The interpreter proposes; the writer persists via
+    // the domain transition (I-016).
+    {
+      provide: EMOTION_INTERPRETER,
+      inject: ["YAOYAO_AI_ROUTER"],
+      useFactory: (router: AIRouter) => new RouterEmotionInterpreter(router),
+    },
+    {
+      provide: EMOTION_STATE_WRITER,
+      useClass: TransactionalEmotionWriter,
+    },
     {
       provide: CONVERSATION_ORCHESTRATOR,
-      inject: ["YAOYAO_AI_ROUTER", CONTEXT_DATA, MEMORY_RETRIEVAL],
-      useFactory: (router: AIRouter, contextData, memoryRetrieval: MemoryRetrieval) =>
-        new ConversationOrchestrator({ router, contextData, memoryRetrieval }),
+      inject: [
+        "YAOYAO_AI_ROUTER",
+        CONTEXT_DATA,
+        MEMORY_RETRIEVAL,
+        EMOTION_INTERPRETER,
+        EMOTION_STATE_WRITER,
+      ],
+      useFactory: (
+        router: AIRouter,
+        contextData,
+        memoryRetrieval: MemoryRetrieval,
+        emotionInterpreter: EmotionInterpreter,
+        emotionWriter: EmotionStateWriter,
+      ) =>
+        new ConversationOrchestrator({
+          router,
+          contextData,
+          memoryRetrieval,
+          emotionInterpreter,
+          emotionWriter,
+        }),
     },
   ],
   exports: [
@@ -165,6 +201,8 @@ const PG_POOL = "YAOYAO_PG_POOL";
     "YAOYAO_AI_ROUTER",
     CONTEXT_DATA,
     MEMORY_RETRIEVAL,
+    EMOTION_INTERPRETER,
+    EMOTION_STATE_WRITER,
     CONVERSATION_ORCHESTRATOR,
   ],
 })
