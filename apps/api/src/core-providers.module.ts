@@ -141,12 +141,13 @@ const PG_POOL = "YAOYAO_PG_POOL";
       useClass: TransactionalContextDataAdapter,
     },
     // MVP-002D: Memory Retrieval wiring. Postgres adapter, SELECT-only.
-    // Owner-scoped (user_id, yaoyao_id); yaoyaoId is server-resolved.
+    // Owner-scoped (user_id, yaoyao_id) with RLS pinned per retrieve();
+    // yaoyaoId is server-resolved. Takes the raw pool (not a Drizzle Db)
+    // so each retrieve() can pin its own RLS owner context.
     {
       provide: MEMORY_RETRIEVAL,
       inject: [PG_POOL],
-      useFactory: (pool: Pool) =>
-        new PostgresMemoryRetrievalAdapter(drizzle(pool, { schema })),
+      useFactory: (pool: Pool) => new PostgresMemoryRetrievalAdapter(pool),
     },
     {
       provide: CONVERSATION_ORCHESTRATOR,

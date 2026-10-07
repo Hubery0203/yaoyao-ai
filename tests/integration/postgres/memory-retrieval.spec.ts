@@ -56,9 +56,10 @@ async function setupUser(db: TestDatabase) {
         passwordHash: "h",
       }),
   );
-  // Fetch the auto-created memory container.
-  const appDb = drizzle(db.appPool, { schema });
-  const containers = await appDb
+  // Fetch the auto-created memory container via the admin pool
+  // (superuser bypasses RLS; fixtures live outside owner scope).
+  const adminDb = drizzle(db.adminPool, { schema });
+  const containers = await adminDb
     .select({ containerId: schema.memoryContainers.containerId })
     .from(schema.memoryContainers)
     .where(eq(schema.memoryContainers.userId, userId as string))
@@ -76,10 +77,10 @@ async function insertMemories(
   owner: { userId: UserId; yaoyaoId: YaoYaoId; containerId: string },
   mems: TestMemory[],
 ) {
-  const appDb = drizzle(db.appPool, { schema });
+  const adminDb = drizzle(db.adminPool, { schema });
   const now = new Date();
   for (const m of mems) {
-    await appDb.insert(schema.memories).values({
+    await adminDb.insert(schema.memories).values({
       memoryId: m.memoryId,
       containerId: owner.containerId,
       userId: owner.userId as string,
@@ -148,9 +149,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
         status: "VALIDATED",
       },
     ]);
-    const adapter = new PostgresMemoryRetrievalAdapter(
-      drizzle(db.appPool, { schema }),
-    );
+    const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     const result = await adapter.retrieve(retrievalInput(owner, "我想喝咖啡"));
     expect(result.memories.length).toBeGreaterThan(0);
     expect(result.memories[0].summary).toContain("咖啡");
@@ -178,9 +177,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
         status: "CONSOLIDATED",
       },
     ]);
-    const adapter = new PostgresMemoryRetrievalAdapter(
-      drizzle(db.appPool, { schema }),
-    );
+    const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     // A queries with A's own identity — B's memory must not appear.
     const resultA = await adapter.retrieve(retrievalInput(userA, "咖啡偏好"));
     expect(
@@ -206,9 +203,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
         status: "CONSOLIDATED",
       },
     ]);
-    const adapter = new PostgresMemoryRetrievalAdapter(
-      drizzle(db.appPool, { schema }),
-    );
+    const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     const result = await adapter.retrieve(retrievalInput(owner2, "咖啡"));
     expect(result.memories.every((m) => m.memoryId !== memId)).toBe(true);
   });
@@ -226,8 +221,8 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
         status: "CONSOLIDATED",
       },
     ]);
-    const appDb = drizzle(db.appPool, { schema });
-    const beforeRows = await appDb
+    const adminDb = drizzle(db.adminPool, { schema });
+    const beforeRows = await adminDb
       .select({
         memoryId: schema.memories.memoryId,
         version: schema.memories.version,
@@ -237,12 +232,10 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
       .from(schema.memories)
       .where(eq(schema.memories.memoryId, memId));
     expect(beforeRows.length).toBe(1);
-    const adapter = new PostgresMemoryRetrievalAdapter(
-      drizzle(db.appPool, { schema }),
-    );
+    const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     await adapter.retrieve(retrievalInput(owner, "咖啡"));
     await adapter.retrieve(retrievalInput(owner, "咖啡"));
-    const afterRows = await appDb
+    const afterRows = await adminDb
       .select({
         memoryId: schema.memories.memoryId,
         version: schema.memories.version,
@@ -263,9 +256,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
 
   it("D14: empty database → empty result, never hallucinated", async () => {
     const owner = await setupUser(db);
-    const adapter = new PostgresMemoryRetrievalAdapter(
-      drizzle(db.appPool, { schema }),
-    );
+    const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     const result = await adapter.retrieve(
       retrievalInput(owner, "用户喜欢什么咖啡？"),
     );
@@ -293,9 +284,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
         status: "VALIDATED",
       },
     ]);
-    const adapter = new PostgresMemoryRetrievalAdapter(
-      drizzle(db.appPool, { schema }),
-    );
+    const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     const r1 = await adapter.retrieve(retrievalInput(owner, "咖啡旅行"));
     const r2 = await adapter.retrieve(retrievalInput(owner, "咖啡旅行"));
     expect(r1.memories.map((m) => m.memoryId)).toEqual(
@@ -318,13 +307,11 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
         status: "CONSOLIDATED",
       },
     ]);
-    const appDb = drizzle(db.appPool, { schema });
+    const adminDb = drizzle(db.adminPool, { schema });
     const countBefore = (
-      await appDb.select().from(schema.memories)
+      await adminDb.select().from(schema.memories)
     ).length;
-    const adapter = new PostgresMemoryRetrievalAdapter(
-      drizzle(db.appPool, { schema }),
-    );
+    const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     const results = await Promise.all(
       ["咖啡", "旅行", "音乐", "电影", "美食"].map((q) =>
         adapter.retrieve(retrievalInput(owner, q)),
@@ -335,7 +322,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
     expect(new Set(requestIds).size).toBe(5);
     // Nothing was written.
     const countAfter = (
-      await appDb.select().from(schema.memories)
+      await adminDb.select().from(schema.memories)
     ).length;
     expect(countAfter).toBe(countBefore);
   });
