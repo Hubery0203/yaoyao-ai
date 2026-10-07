@@ -23,6 +23,7 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string }> = [
   { method: "get", path: "/api/v1/events" },
   { method: "get", path: "/api/v1/memories" },
   { method: "get", path: "/api/v1/diagnostics/replay" },
+  { method: "post", path: "/api/v1/conversations/messages" },
   { method: "get", path: "/health/live" },
   { method: "get", path: "/health/ready" },
 ];

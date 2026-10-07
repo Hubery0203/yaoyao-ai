@@ -36,10 +36,10 @@ describe("POST /api/v1/conversations/messages (MVP-002A)", () => {
 
   it("runs the echo path for an authenticated user", async () => {
     if (!ctx) return;
-    const { token } = await registerUser(ctx, "conv-echo@example.com", "Password123!");
+    const { accessToken } = await registerUser(ctx, "conv-echo@example.com", "Password123!");
     const res = await ctx.http
       .post("/api/v1/conversations/messages")
-      .set(authHeader(token))
+      .set(authHeader(accessToken))
       .send({ text: "你好呀" })
       .expect(200);
     expect(res.body.response).toContain("你好呀");
@@ -48,10 +48,10 @@ describe("POST /api/v1/conversations/messages (MVP-002A)", () => {
 
   it("rejects empty text (400)", async () => {
     if (!ctx) return;
-    const { token } = await registerUser(ctx, "conv-bad@example.com", "Password123!");
+    const { accessToken } = await registerUser(ctx, "conv-bad@example.com", "Password123!");
     await ctx.http
       .post("/api/v1/conversations/messages")
-      .set(authHeader(token))
+      .set(authHeader(accessToken))
       .send({ text: "" })
       .expect(400);
   });
