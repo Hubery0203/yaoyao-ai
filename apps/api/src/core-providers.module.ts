@@ -1,6 +1,7 @@
 import { Global, Inject, Module, type OnModuleDestroy } from "@nestjs/common";
 import {
   AUTH_CREDENTIALS,
+  CONTEXT_DATA,
   HEALTH_PROBE,
   LLM_PROVIDER,
   PASSWORD_HASHER,
@@ -24,6 +25,7 @@ import {
   ConversationOrchestrator,
   MockLLMProvider,
 } from "@yaoyao/runtime";
+import { TransactionalContextDataAdapter } from "./persona-context.adapter.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 
@@ -93,10 +95,17 @@ const PG_POOL = "YAOYAO_PG_POOL";
       provide: LLM_PROVIDER,
       useClass: MockLLMProvider,
     },
+    // MVP-002B: Context data wiring. The adapter composes MVP-001 read
+    // use cases inside a scoped read transaction (read-only).
+    {
+      provide: CONTEXT_DATA,
+      useClass: TransactionalContextDataAdapter,
+    },
     {
       provide: CONVERSATION_ORCHESTRATOR,
-      inject: [LLM_PROVIDER],
-      useFactory: (llm) => new ConversationOrchestrator({ llm }),
+      inject: [LLM_PROVIDER, CONTEXT_DATA],
+      useFactory: (llm, contextData) =>
+        new ConversationOrchestrator({ llm, contextData }),
     },
   ],
   exports: [
@@ -106,6 +115,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     AUTH_CREDENTIALS,
     HEALTH_PROBE,
     LLM_PROVIDER,
+    CONTEXT_DATA,
     CONVERSATION_ORCHESTRATOR,
   ],
 })

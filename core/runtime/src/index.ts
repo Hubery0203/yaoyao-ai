@@ -25,3 +25,25 @@ export {
   type ValidatedProposal,
 } from "./validation/minimal.js";
 export { MockLLMProvider } from "./testing/mock-provider.js";
+export { PersonaRuntime } from "./persona/persona-runtime.js";
+export {
+  RUNTIME_BEHAVIORAL_CONSTRAINTS,
+  renderConstraints,
+} from "./persona/constraints.js";
+export { ContextAssembler } from "./context/assembly.js";
+export {
+  allocateBudget,
+  estimateTokens,
+  makeLayer,
+  type BudgetConfig,
+  type BudgetResult,
+} from "./context/budget.js";
+export type {
+  ContextLayer,
+  ContextLayerId,
+  ContextPriority,
+  ConversationTurn,
+  PromptContext,
+  RecentEventProjection,
+  RelevantMemoryContext,
+} from "./context/layers.js";
