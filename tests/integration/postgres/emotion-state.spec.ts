@@ -14,10 +14,10 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  applyEmotionProposal,
   PostgresTransactionManager,
 } from "@yaoyao/infrastructure";
 import {
+  applyEmotionProposal,
   initializeYaoYao,
   type PersistenceTransaction,
 } from "@yaoyao/application";
