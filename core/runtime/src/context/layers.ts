@@ -27,14 +27,14 @@ export interface ContextLayer {
   readonly content: string;
 }
 
-/** C4 contract — memory input interface (retrieval arrives in 002D). */
-export interface RelevantMemoryContext {
-  readonly memories: ReadonlyArray<{
-    readonly memoryId: string;
-    readonly summary: string;
-    readonly importance: number;
-  }>;
-}
+import type { RelevantMemoryContext } from "@yaoyao/application";
+
+/**
+ * C4 contract — the canonical RelevantMemoryContext lives on the
+ * MemoryRetrieval port (@yaoyao/application). Re-exported here so the
+ * layer contract stays discoverable next to the other C-layers.
+ */
+export type { RelevantMemoryContext };
 
 /** C5 — recent event projection (not the raw DomainEvent). */
 export interface RecentEventProjection {

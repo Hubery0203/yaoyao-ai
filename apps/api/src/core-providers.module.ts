@@ -3,9 +3,11 @@ import {
   AUTH_CREDENTIALS,
   CONTEXT_DATA,
   HEALTH_PROBE,
+  MEMORY_RETRIEVAL,
   PASSWORD_HASHER,
   TOKEN_SERVICE,
   TRANSACTION_MANAGER,
+  type MemoryRetrieval,
 } from "@yaoyao/application";
 import {
   Argon2PasswordHasher,
@@ -14,6 +16,7 @@ import {
   OpenAIAdapter,
   PostgresAuthCredentialRepository,
   PostgresHealthProbe,
+  PostgresMemoryRetrievalAdapter,
   PostgresTransactionManager,
   createPgPool,
   loadConfig,
@@ -137,11 +140,19 @@ const PG_POOL = "YAOYAO_PG_POOL";
       provide: CONTEXT_DATA,
       useClass: TransactionalContextDataAdapter,
     },
+    // MVP-002D: Memory Retrieval wiring. Postgres adapter, SELECT-only.
+    // Owner-scoped (user_id, yaoyao_id); yaoyaoId is server-resolved.
+    {
+      provide: MEMORY_RETRIEVAL,
+      inject: [PG_POOL],
+      useFactory: (pool: Pool) =>
+        new PostgresMemoryRetrievalAdapter(drizzle(pool, { schema })),
+    },
     {
       provide: CONVERSATION_ORCHESTRATOR,
-      inject: ["YAOYAO_AI_ROUTER", CONTEXT_DATA],
-      useFactory: (router: AIRouter, contextData) =>
-        new ConversationOrchestrator({ router, contextData }),
+      inject: ["YAOYAO_AI_ROUTER", CONTEXT_DATA, MEMORY_RETRIEVAL],
+      useFactory: (router: AIRouter, contextData, memoryRetrieval: MemoryRetrieval) =>
+        new ConversationOrchestrator({ router, contextData, memoryRetrieval }),
     },
   ],
   exports: [
@@ -152,6 +163,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     HEALTH_PROBE,
     "YAOYAO_AI_ROUTER",
     CONTEXT_DATA,
+    MEMORY_RETRIEVAL,
     CONVERSATION_ORCHESTRATOR,
   ],
 })

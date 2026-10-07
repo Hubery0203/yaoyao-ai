@@ -13,6 +13,25 @@ export { createLogger } from "./observability/logger.js";
 export { createRedisConnection } from "./redis/connection.js";
 export { DeepSeekAdapter } from "./llm/deepseek.adapter.js";
 export { OpenAIAdapter } from "./llm/openai.adapter.js";
+export {
+  PostgresMemoryRetrievalAdapter,
+  type MemoryRetrievalConfig,
+  // Ranking pure functions (unit-testable; also used by the adapter).
+  buildQueryText,
+  DEFAULT_RANKING_WEIGHTS,
+  dropNearDuplicates,
+  dedupeSupersedesChains,
+  extractKeywords,
+  keywordRelevance,
+  projectSummary,
+  rankAndSelect,
+  recencyFactor,
+  scoreCandidate,
+  textBigrams,
+  type RankingCandidate,
+  type RankingWeights,
+  type ScoredCandidate,
+} from "./memory/index.js";
 export * from "./postgres/index.js";
 export { Argon2PasswordHasher } from "./auth/password-hasher.js";
 export {

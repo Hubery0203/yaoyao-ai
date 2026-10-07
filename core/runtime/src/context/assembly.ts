@@ -42,6 +42,17 @@ export interface AssembledContext {
   readonly yaoyaoId: string;
 }
 
+/** Input to ContextAssembler.assemble. */
+export interface AssembleInput {
+  readonly data: PersonaData;
+  readonly inputText: string;
+  /**
+   * Relevant memories for C4 (MVP-002D). When absent, C4 renders the
+   * empty path — the layer contract is unchanged.
+   */
+  readonly memoryContext?: RelevantMemoryContext;
+}
+
 const DEFAULT_BUDGET: BudgetConfig = {
   totalBudget: 8000,
   reservedOutputTokens: 2000,
@@ -80,8 +91,8 @@ export class ContextAssembler {
 
   constructor(private readonly budget: BudgetConfig = DEFAULT_BUDGET) {}
 
-  assemble(input: { data: PersonaData; inputText: string }): AssembledContext {
-    const { data, inputText } = input;
+  assemble(input: AssembleInput): AssembledContext {
+    const { data, inputText, memoryContext } = input;
     const behavioral = this.persona.build({
       relationship: data.relationship,
       state: data.state,
@@ -92,7 +103,7 @@ export class ContextAssembler {
       this.buildC1(behavioral),
       this.buildC2(behavioral),
       this.buildC3(behavioral),
-      this.buildC4(),
+      this.buildC4(memoryContext),
       this.buildC5(data.recentEvents),
       this.buildC6(),
       this.buildC7(inputText),
@@ -158,13 +169,16 @@ export class ContextAssembler {
     return makeLayer("C3", LAYER_PRIORITY.C3, content);
   }
 
-  private buildC4(): ContextLayer {
-    // Contract exists (RelevantMemoryContext); retrieval arrives in 002D.
-    const empty: RelevantMemoryContext = { memories: [] };
+  private buildC4(memoryContext?: RelevantMemoryContext): ContextLayer {
+    // MVP-002D: C4 renders the retrieved RelevantMemoryContext.
+    // Only model-safe summaries reach the prompt — never IDs, embeddings,
+    // scores, or audit fields (the projection happens in the retrieval
+    // adapter; this layer only joins the summaries).
+    const memories = memoryContext?.memories ?? [];
     const content =
-      empty.memories.length === 0
-        ? "Relevant memories: none retrieved in this turn (memory retrieval arrives in MVP-002D)."
-        : empty.memories.map((m) => `- ${m.summary}`).join("\n");
+      memories.length === 0
+        ? "Relevant memories: none retrieved in this turn."
+        : ["Relevant shared memory:", ...memories.map((m) => `- ${m.summary}`)].join("\n");
     return makeLayer("C4", LAYER_PRIORITY.C4, content);
   }
 

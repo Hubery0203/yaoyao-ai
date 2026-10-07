@@ -9,6 +9,7 @@ export * from "./ports/persistence/index.js";
 export * from "./ports/security.js";
 export * from "./ports/llm.js";
 export * from "./ports/context-data.js";
+export * from "./ports/memory-retrieval.js";
 export {
   initializeYaoYao,
   type InitializeYaoYaoInput,

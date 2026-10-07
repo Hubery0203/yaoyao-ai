@@ -25,12 +25,14 @@
  * database client. Step 8 performs zero writes.
  */
 import {
+  EmptyMemoryRetrieval,
   unwrapProposal,
   type ContextDataPort,
   type LLMRequest,
+  type MemoryRetrieval,
   type RuntimeDecision,
 } from "@yaoyao/application";
-import type { UserId } from "@yaoyao/domain";
+import type { UserId, YaoYaoId } from "@yaoyao/domain";
 import { randomUUID } from "node:crypto";
 import { ContextAssembler } from "../context/assembly.js";
 import { createTrace } from "../contracts/trace.js";
@@ -42,6 +44,12 @@ import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 export interface OrchestratorDeps {
   readonly router: AIRouter;
   readonly contextData: ContextDataPort;
+  /**
+   * MVP-002D: Memory Retrieval port. Optional — defaults to the empty
+   * (no-op) retrieval so unit tests and non-memory environments keep
+   * working. Production wiring injects the Postgres adapter.
+   */
+  readonly memoryRetrieval?: MemoryRetrieval;
 }
 
 /** NestJS injection token for the ConversationOrchestrator. */
@@ -100,14 +108,37 @@ export class ConversationOrchestrator {
     (trace as { situation?: unknown }).situation = situation;
     executedSteps.push("situation-understanding");
 
-    // Step 4 — Context Assembly (REAL in MVP-002B).
-    // Load PersonaData (read-only) → Persona Runtime → C0–C7 → budget.
+    // Step 4 — Context Assembly (REAL in MVP-002B; C4 live in 002D).
+    // Load PersonaData (read-only) → Memory Retrieval (read-only) →
+    // Persona Runtime → C0–C7 → budget.
     const personaData = await this.deps.contextData.loadPersonaData(
       input.userId as UserId,
     );
+    // MVP-002D: retrieve relevant memories. The yaoyaoId is server-resolved
+    // from PersonaData (§VIII) — never trusted from client input.
+    // recentConversation is empty until Migration 0003 populates C6.
+    const memoryRetrieval = this.deps.memoryRetrieval ?? new EmptyMemoryRetrieval();
+    const memoryContext = await memoryRetrieval.retrieve({
+      userId: input.userId as UserId,
+      yaoyaoId: personaData.yaoyao.yaoyaoId as YaoYaoId,
+      currentInput: input.text,
+      situation: {
+        intent: situation.intent,
+        urgency: situation.urgency,
+        taskNature: situation.taskNature,
+      },
+      relationshipContext: {
+        type: personaData.relationship.type,
+        status: personaData.relationship.status,
+      },
+      recentConversation: [],
+      limit: 50,
+      traceId: input.traceId,
+    });
     const assembled = this.assembler.assemble({
       data: personaData,
       inputText: input.text,
+      memoryContext,
     });
     (trace as { context?: unknown }).context = {
       layersIncluded: [...assembled.promptContext.layersIncluded],
@@ -115,6 +146,8 @@ export class ConversationOrchestrator {
       estimatedInputTokens: assembled.promptContext.estimatedInputTokens,
       reservedOutputTokens: assembled.promptContext.reservedOutputTokens,
       totalBudget: assembled.promptContext.totalBudget,
+      memoryRetrieved: memoryContext.memories.length,
+      memoryTelemetry: memoryContext.telemetry,
     };
     executedSteps.push("context-assembly");
 
