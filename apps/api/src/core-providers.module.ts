@@ -1,4 +1,4 @@
-import { Global, Module } from "@nestjs/common";
+import { Global, Inject, Module, type OnModuleDestroy } from "@nestjs/common";
 import {
   AUTH_CREDENTIALS,
   HEALTH_PROBE,
@@ -89,4 +89,16 @@ const PG_POOL = "YAOYAO_PG_POOL";
     HEALTH_PROBE,
   ],
 })
-export class CoreProvidersModule {}
+export class CoreProvidersModule implements OnModuleDestroy {
+  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+
+  /**
+   * Drain the pg pool on shutdown. Without this, app.close() leaves
+   * connections open; when the Testcontainers postgres is stopped the
+   * server terminates them (57P01) and the orphaned clients surface as
+   * uncaught exceptions that fail the CI run.
+   */
+  async onModuleDestroy(): Promise<void> {
+    await this.pool.end().catch(() => undefined);
+  }
+}
