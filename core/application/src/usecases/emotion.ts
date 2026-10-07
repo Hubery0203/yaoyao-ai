@@ -107,6 +107,9 @@ export async function applyEmotionProposal(
 
   // 4. STATE_CHANGED event — append-only, with causation/correlation.
   //    Payload follows the replay contract: { changes, expectedVersion }.
+  //    changes.emotion carries ABSOLUTE values (replay applies them via
+  //    CoreState.transition, which replaces); `deltas` records the
+  //    validated proposal deltas for observability.
   const event = DomainEvent.create({
     type: "STATE_CHANGED",
     actor: "SYSTEM",
@@ -114,6 +117,7 @@ export async function applyEmotionProposal(
     yaoyaoId: input.yaoyaoId,
     payload: {
       changes: { emotion: { ...emotionPatch } },
+      deltas: { ...deltas },
       expectedVersion: input.expectedVersion,
       newVersion: saved.state.stateVersion,
     },

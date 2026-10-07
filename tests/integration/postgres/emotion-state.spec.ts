@@ -141,8 +141,12 @@ describe.skipIf(!HAS_DOCKER)("MVP-002E: Emotion State Write-back (PostgreSQL)", 
     // Payload follows the replay contract.
     const payload = last.event.payload as Record<string, unknown>;
     expect(payload["expectedVersion"]).toBe(v0);
+    // changes.emotion = absolute values (replay contract); deltas = proposal.
     expect(
       ((payload["changes"] as Record<string, unknown>)["emotion"] as Record<string, number>)["affection"],
+    ).toBeCloseTo(0.8);
+    expect(
+      (payload["deltas"] as Record<string, number>)["affection"],
     ).toBeCloseTo(0.1);
   });
 
