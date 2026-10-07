@@ -27,7 +27,6 @@
 import {
   unwrapProposal,
   type ContextDataPort,
-  type LLMProvider,
   type LLMRequest,
   type RuntimeDecision,
 } from "@yaoyao/application";
@@ -36,10 +35,12 @@ import { randomUUID } from "node:crypto";
 import { ContextAssembler } from "../context/assembly.js";
 import { createTrace } from "../contracts/trace.js";
 import { validateProposalMinimal } from "../validation/minimal.js";
+import { AIRouter } from "../router/router.js";
+import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 
 export interface OrchestratorDeps {
-  readonly llm: LLMProvider;
+  readonly router: AIRouter;
   readonly contextData: ContextDataPort;
 }
 
@@ -125,29 +126,40 @@ export class ConversationOrchestrator {
     (trace as { decision?: unknown }).decision = decision;
     executedSteps.push("decision");
 
-    // Step 6 — LLM Generation: via the port. The assembled prompt context
-    // is passed as the model input (system + context sections).
+    // Step 6 — LLM Generation: router selects the provider for this turn
+    // (task=conversation → L2), then the resilient invoker handles
+    // retry/fallback. The runtime never touches a vendor SDK.
+    const selected = this.deps.router.select({
+      task: "conversation",
+      fallbackAllowed: true,
+    });
+    const invoker = new ResilientLLMInvoker(
+      selected.provider,
+      this.deps.router.fallbackProvider(),
+    );
     const llmRequest: LLMRequest = {
       userId: input.userId as UserId,
       yaoyaoId: assembled.yaoyaoId as never,
-      context: {
-        inputText: [
-          `--- SYSTEM ---\n${assembled.promptContext.systemPrompt}`,
-          `--- CONTEXT ---\n${assembled.promptContext.contextText}`,
-        ].join("\n\n"),
-        decision,
-      },
+      systemContext: assembled.promptContext.systemPrompt,
+      conversationContext: assembled.promptContext.contextText,
+      userInput: input.text,
+      decision,
       outputSchemaName: "llm-output-contract-v1",
       timeoutMs: 30_000,
-      traceId: input.traceId,
+      metadata: {
+        runtimeVersion: "mvp-002c",
+        contextVersion: "c0-c7-v1",
+        requestId: input.traceId,
+      },
     };
-    const started = Date.now();
-    const proposal = await this.deps.llm.generate(llmRequest);
+    const { proposal, telemetry } = await invoker.invoke(llmRequest);
     (trace as { llm?: unknown }).llm = {
-      providerId: this.deps.llm.providerId,
-      modelId: this.deps.llm.modelId,
-      latencyMs: Date.now() - started,
-      fallbackUsed: false,
+      providerId: telemetry.providerId,
+      modelId: telemetry.modelId,
+      latencyMs: telemetry.latencyMs,
+      retryCount: telemetry.retryCount,
+      fallbackUsed: telemetry.fallbackUsed,
+      routingReason: selected.reason,
     };
     executedSteps.push("llm-generation");
 

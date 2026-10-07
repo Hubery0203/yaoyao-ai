@@ -25,6 +25,13 @@ export {
   type ValidatedProposal,
 } from "./validation/minimal.js";
 export { MockLLMProvider } from "./testing/mock-provider.js";
+export { AIRouter, type RouterConfig, type RoutingInput, type SelectedModel } from "./router/router.js";
+export {
+  ResilientLLMInvoker,
+  type ResilienceConfig,
+  type ResilientResult,
+} from "./router/resilient.js";
+export { estimateUsage, DEFAULT_PRICING, type ModelPricing, type PricingTable } from "./router/usage.js";
 export { PersonaRuntime } from "./persona/persona-runtime.js";
 export {
   RUNTIME_BEHAVIORAL_CONSTRAINTS,

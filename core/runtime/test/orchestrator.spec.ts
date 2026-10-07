@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { EmotionVector } from "@yaoyao/domain";
 import { MockLLMProvider } from "@yaoyao/runtime";
 import {
+  AIRouter,
   CANONICAL_STEP_ORDER,
   ConversationOrchestrator,
 } from "@yaoyao/runtime";
@@ -62,8 +63,10 @@ describe("ConversationOrchestrator (MVP-002A skeleton)", () => {
   });
 
   it("runs the full echo path: input → mock provider → response", async () => {
+    const mock = new MockLLMProvider();
+    const router = new AIRouter({ l1: mock, l2: mock, l3: mock, fallback: mock });
     const orchestrator = new ConversationOrchestrator({
-      llm: new MockLLMProvider(),
+      router,
       contextData: fakeContextData() as never,
     });
     const { response, trace } = await orchestrator.converse({
@@ -73,14 +76,16 @@ describe("ConversationOrchestrator (MVP-002A skeleton)", () => {
     });
 
     expect(response).toContain("你好呀");
-    expect(response).toContain("MVP-002A");
+    expect(response).toContain("MVP-002C");
     expect(trace.traceId).toBe("trace-1");
     expect(trace.userId).toBe("user-123");
   });
 
   it("records the executed steps in canonical order in the trace", async () => {
+    const mock = new MockLLMProvider();
+    const router = new AIRouter({ l1: mock, l2: mock, l3: mock, fallback: mock });
     const orchestrator = new ConversationOrchestrator({
-      llm: new MockLLMProvider(),
+      router,
       contextData: fakeContextData() as never,
     });
     const { trace } = await orchestrator.converse({
@@ -93,8 +98,10 @@ describe("ConversationOrchestrator (MVP-002A skeleton)", () => {
   });
 
   it("creates a pending (in-memory) event at step 2 — nothing persisted", async () => {
+    const mock = new MockLLMProvider();
+    const router = new AIRouter({ l1: mock, l2: mock, l3: mock, fallback: mock });
     const orchestrator = new ConversationOrchestrator({
-      llm: new MockLLMProvider(),
+      router,
       contextData: fakeContextData() as never,
     });
     const { trace } = await orchestrator.converse({
@@ -110,8 +117,10 @@ describe("ConversationOrchestrator (MVP-002A skeleton)", () => {
   });
 
   it("records the mock provider identity in the trace (no vendor SDK)", async () => {
+    const mock = new MockLLMProvider();
+    const router = new AIRouter({ l1: mock, l2: mock, l3: mock, fallback: mock });
     const orchestrator = new ConversationOrchestrator({
-      llm: new MockLLMProvider(),
+      router,
       contextData: fakeContextData() as never,
     });
     const { trace } = await orchestrator.converse({

@@ -3,14 +3,15 @@ import {
   AUTH_CREDENTIALS,
   CONTEXT_DATA,
   HEALTH_PROBE,
-  LLM_PROVIDER,
   PASSWORD_HASHER,
   TOKEN_SERVICE,
   TRANSACTION_MANAGER,
 } from "@yaoyao/application";
 import {
   Argon2PasswordHasher,
+  DeepSeekAdapter,
   JwtTokenService,
+  OpenAIAdapter,
   PostgresAuthCredentialRepository,
   PostgresHealthProbe,
   PostgresTransactionManager,
@@ -22,10 +23,38 @@ import {
 } from "@yaoyao/infrastructure";
 import {
   CONVERSATION_ORCHESTRATOR,
+  AIRouter,
   ConversationOrchestrator,
   MockLLMProvider,
 } from "@yaoyao/runtime";
 import { TransactionalContextDataAdapter } from "./persona-context.adapter.js";
+import type { LLMProvider } from "@yaoyao/application";
+
+/**
+ * Build an LLMProvider from a configured provider name.
+ * "mock" needs no key; deepseek/openai fail fast when the key is missing
+ * (the adapter constructor throws ProviderError AUTH_ERROR).
+ */
+function buildProvider(
+  name: "mock" | "deepseek" | "openai",
+  config: AppConfig,
+): LLMProvider {
+  switch (name) {
+    case "deepseek":
+      return new DeepSeekAdapter({
+        apiKey: config.DEEPSEEK_API_KEY ?? "",
+        modelId: config.DEEPSEEK_MODEL,
+      });
+    case "openai":
+      return new OpenAIAdapter({
+        apiKey: config.OPENAI_API_KEY ?? "",
+        modelId: config.OPENAI_MODEL,
+      });
+    case "mock":
+    default:
+      return new MockLLMProvider();
+  }
+}
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 
@@ -88,12 +117,19 @@ const PG_POOL = "YAOYAO_PG_POOL";
       inject: [PG_POOL],
       useFactory: (pool: Pool) => new PostgresHealthProbe(pool),
     },
-    // MVP-002A: Conversation Runtime wiring. The LLM provider is the Mock
-    // (echo path); production adapters arrive in MVP-002C. The orchestrator
-    // is constructed with the provider — the ONLY model access path.
+    // MVP-002C: AI Router wiring. Tier providers are config-selected
+    // (mock/deepseek/openai); no model is frozen as YaoYao's primary (I-014).
+    // API keys come from server-side env only — never logged, never traced.
     {
-      provide: LLM_PROVIDER,
-      useClass: MockLLMProvider,
+      provide: "YAOYAO_AI_ROUTER",
+      inject: [APP_CONFIG],
+      useFactory: (config: AppConfig) =>
+        new AIRouter({
+          l1: buildProvider(config.LLM_L1_PROVIDER, config),
+          l2: buildProvider(config.LLM_L2_PROVIDER, config),
+          l3: buildProvider(config.LLM_L3_PROVIDER, config),
+          fallback: buildProvider(config.LLM_FALLBACK_PROVIDER, config),
+        }),
     },
     // MVP-002B: Context data wiring. The adapter composes MVP-001 read
     // use cases inside a scoped read transaction (read-only).
@@ -103,9 +139,9 @@ const PG_POOL = "YAOYAO_PG_POOL";
     },
     {
       provide: CONVERSATION_ORCHESTRATOR,
-      inject: [LLM_PROVIDER, CONTEXT_DATA],
-      useFactory: (llm, contextData) =>
-        new ConversationOrchestrator({ llm, contextData }),
+      inject: ["YAOYAO_AI_ROUTER", CONTEXT_DATA],
+      useFactory: (router: AIRouter, contextData) =>
+        new ConversationOrchestrator({ router, contextData }),
     },
   ],
   exports: [
@@ -114,7 +150,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     TOKEN_SERVICE,
     AUTH_CREDENTIALS,
     HEALTH_PROBE,
-    LLM_PROVIDER,
+    "YAOYAO_AI_ROUTER",
     CONTEXT_DATA,
     CONVERSATION_ORCHESTRATOR,
   ],

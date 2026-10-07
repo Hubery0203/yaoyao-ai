@@ -11,6 +11,8 @@ export { loadConfig, ConfigError } from "./config/env.js";
 export type { AppConfig } from "./config/env.js";
 export { createLogger } from "./observability/logger.js";
 export { createRedisConnection } from "./redis/connection.js";
+export { DeepSeekAdapter } from "./llm/deepseek.adapter.js";
+export { OpenAIAdapter } from "./llm/openai.adapter.js";
 export * from "./postgres/index.js";
 export { Argon2PasswordHasher } from "./auth/password-hasher.js";
 export {

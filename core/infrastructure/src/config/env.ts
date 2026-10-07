@@ -26,6 +26,20 @@ const EnvSchema = z.object({
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   JWT_ISSUER: z.string().default("yaoyao-ai"),
   JWT_AUDIENCE: z.string().default("yaoyao-app"),
+
+  // [MVP-002C] AI providers. Keys live ONLY in server env / secret manager —
+  // never in client bundles, logs, traces, or API responses.
+  DEEPSEEK_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  DEEPSEEK_MODEL: z.string().default("deepseek-chat"),
+  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  // Tier provider selection. "mock" is always available (no key needed).
+  // No single model is frozen as YaoYao's primary — this is configuration,
+  // changeable without touching Core (I-014).
+  LLM_L1_PROVIDER: z.enum(["mock", "deepseek", "openai"]).default("mock"),
+  LLM_L2_PROVIDER: z.enum(["mock", "deepseek", "openai"]).default("mock"),
+  LLM_L3_PROVIDER: z.enum(["mock", "deepseek", "openai"]).default("mock"),
+  LLM_FALLBACK_PROVIDER: z.enum(["mock", "deepseek", "openai"]).default("mock"),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

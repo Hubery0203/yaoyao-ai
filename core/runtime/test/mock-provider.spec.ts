@@ -20,13 +20,13 @@ describe("MockLLMProvider", () => {
     const proposal = await mock.generate({
       userId: "u" as never,
       yaoyaoId: "y" as never,
-      context: {
-        inputText: "hello",
-        decision: { primaryIntent: "answer", conversationMode: "normal" },
-      },
+      systemContext: "system",
+      conversationContext: "context",
+      userInput: "hello",
+      decision: { primaryIntent: "answer", conversationMode: "normal" },
       outputSchemaName: "llm-output-contract-v1",
       timeoutMs: 1000,
-      traceId: "t",
+      metadata: { runtimeVersion: "test", contextVersion: "test", requestId: "t" },
     });
     for (const field of [
       "response",
