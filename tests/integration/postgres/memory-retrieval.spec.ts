@@ -114,7 +114,7 @@ function retrievalInput(owner: {
     relationshipContext: { type: "deep_partner", status: "active" },
     recentConversation: [],
     limit: 50,
-    traceId: `trace-${Date.now()}`,
+    traceId: `trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   };
 }
 
@@ -287,12 +287,15 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
     const adapter = new PostgresMemoryRetrievalAdapter(db.appPool);
     const r1 = await adapter.retrieve(retrievalInput(owner, "咖啡旅行"));
     const r2 = await adapter.retrieve(retrievalInput(owner, "咖啡旅行"));
+    // Determinism = same selection, same order. Scores depend on wall-clock
+    // recency, so they are compared with tolerance, not bit-exact.
     expect(r1.memories.map((m) => m.memoryId)).toEqual(
       r2.memories.map((m) => m.memoryId),
     );
-    expect(r1.memories.map((m) => m.score)).toEqual(
-      r2.memories.map((m) => m.score),
-    );
+    expect(r1.memories.length).toBe(r2.memories.length);
+    for (let i = 0; i < r1.memories.length; i++) {
+      expect(r1.memories[i].score).toBeCloseTo(r2.memories[i].score, 6);
+    }
   });
 
   it("D16: concurrent retrievals — no mutation, no shared-state pollution", async () => {
