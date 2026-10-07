@@ -2,6 +2,7 @@ import { Global, Inject, Module, type OnModuleDestroy } from "@nestjs/common";
 import {
   AUTH_CREDENTIALS,
   HEALTH_PROBE,
+  LLM_PROVIDER,
   PASSWORD_HASHER,
   TOKEN_SERVICE,
   TRANSACTION_MANAGER,
@@ -18,6 +19,11 @@ import {
   tokenServiceOptionsFromConfig,
   type AppConfig,
 } from "@yaoyao/infrastructure";
+import {
+  CONVERSATION_ORCHESTRATOR,
+  ConversationOrchestrator,
+  MockLLMProvider,
+} from "@yaoyao/runtime";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 
@@ -80,6 +86,18 @@ const PG_POOL = "YAOYAO_PG_POOL";
       inject: [PG_POOL],
       useFactory: (pool: Pool) => new PostgresHealthProbe(pool),
     },
+    // MVP-002A: Conversation Runtime wiring. The LLM provider is the Mock
+    // (echo path); production adapters arrive in MVP-002C. The orchestrator
+    // is constructed with the provider — the ONLY model access path.
+    {
+      provide: LLM_PROVIDER,
+      useClass: MockLLMProvider,
+    },
+    {
+      provide: CONVERSATION_ORCHESTRATOR,
+      inject: [LLM_PROVIDER],
+      useFactory: (llm) => new ConversationOrchestrator({ llm }),
+    },
   ],
   exports: [
     TRANSACTION_MANAGER,
@@ -87,6 +105,8 @@ const PG_POOL = "YAOYAO_PG_POOL";
     TOKEN_SERVICE,
     AUTH_CREDENTIALS,
     HEALTH_PROBE,
+    LLM_PROVIDER,
+    CONVERSATION_ORCHESTRATOR,
   ],
 })
 export class CoreProvidersModule implements OnModuleDestroy {

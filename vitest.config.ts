@@ -17,6 +17,7 @@ export default defineConfig({
       "@yaoyao/domain": resolve(root, "core/domain/src/index.ts"),
       "@yaoyao/http": resolve(root, "core/api/src/index.ts"),
       "@yaoyao/infrastructure": resolve(root, "core/infrastructure/src/index.ts"),
+      "@yaoyao/runtime": resolve(root, "core/runtime/src/index.ts"),
     },
   },
   test: {

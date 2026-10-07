@@ -28,6 +28,7 @@ const PROTECTED_ROUTES: Array<{ method: "get" | "post"; path: string }> = [
   { method: "get", path: "/api/v1/events" },
   { method: "get", path: "/api/v1/memories" },
   { method: "get", path: "/api/v1/diagnostics/replay" },
+  { method: "post", path: "/api/v1/conversations/messages" },
 ];
 
 const FORBIDDEN_ROUTES: Array<{ method: "patch" | "delete" | "put"; path: string }> = [

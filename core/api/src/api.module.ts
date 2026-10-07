@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module.js";
+import { ConversationsModule } from "./conversations/conversations.module.js";
 import { DiagnosticsModule } from "./diagnostics/diagnostics.module.js";
 import { EventsModule } from "./events/events.module.js";
 import { HealthModule } from "./health/health.module.js";
@@ -26,6 +27,7 @@ import { YaoyaoModule } from "./yaoyao/yaoyao.module.js";
     EventsModule,
     MemoriesModule,
     DiagnosticsModule,
+    ConversationsModule,
   ],
 })
 export class ApiModule {}

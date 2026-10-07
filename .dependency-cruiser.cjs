@@ -1,17 +1,18 @@
 /**
- * Architecture boundary enforcement — YaoYao AI MVP-001.
+ * Architecture boundary enforcement — YaoYao AI MVP-001 + MVP-002A.
  *
- * Required dependency direction (Technical Proposal §03):
+ * Required dependency direction (Technical Proposal §03, MVP-002 §B):
  *
- *   apps/*  →  @yaoyao/http, @yaoyao/application, @yaoyao/infrastructure
- *   @yaoyao/http        →  @yaoyao/application            (never infrastructure, never apps)
- *   @yaoyao/application →  @yaoyao/domain                (never infrastructure/http/apps)
+ *   apps/*  →  @yaoyao/http, @yaoyao/runtime, @yaoyao/application, @yaoyao/infrastructure
+ *   @yaoyao/http        →  @yaoyao/application, @yaoyao/runtime (never infrastructure, never apps)
+ *   @yaoyao/runtime     →  @yaoyao/application, @yaoyao/domain  (never infrastructure/http/apps, never vendor SDKs)
+ *   @yaoyao/application →  @yaoyao/domain                (never infrastructure/http/apps/runtime)
  *   @yaoyao/infrastructure → @yaoyao/domain, @yaoyao/application ports
  *   @yaoyao/domain      →  standard library ONLY
  *
  * Rationale: business rules live in aggregates/value objects/policies inside
- * @yaoyao/domain. Controllers, database schemas, and prompts may mirror
- * constraints for usability or defense, but cannot define them.
+ * @yaoyao/domain. The runtime orchestrates the Canonical Pipeline via ports;
+ * it never touches infrastructure implementations or vendor SDKs (I-016).
  */
 module.exports = {
   forbidden: [
@@ -25,17 +26,25 @@ module.exports = {
     },
     {
       name: "no-domain-to-outer-layers",
-      comment: "Domain must not depend on application, infrastructure, http, or apps.",
+      comment: "Domain must not depend on application, infrastructure, http, runtime, or apps.",
       severity: "error",
       from: { path: "core/domain/src" },
-      to: { path: "core/(application|infrastructure|api)|apps/" },
+      to: { path: "core/(application|infrastructure|api|runtime)|apps/" },
     },
     {
       name: "application-depends-on-domain-only",
-      comment: "Application orchestrates domain via ports; it must not reach infrastructure, http, or apps.",
+      comment: "Application orchestrates domain via ports; it must not reach infrastructure, http, runtime, or apps.",
       severity: "error",
       from: { path: "core/application/src" },
-      to: { path: "core/(infrastructure|api)|apps/" },
+      to: { path: "core/(infrastructure|api|runtime)|apps/" },
+    },
+    {
+      name: "runtime-depends-on-application-domain-only",
+      comment:
+        "Runtime orchestrates the Canonical Pipeline via application ports and domain types only. It must never import infrastructure implementations, http, apps, or vendor SDKs (I-016 structural enforcement).",
+      severity: "error",
+      from: { path: "core/runtime/src" },
+      to: { path: "core/(infrastructure|api)|apps/|node_modules/(openai|@anthropic|@google)" },
     },
     {
       name: "http-never-touches-infrastructure",
