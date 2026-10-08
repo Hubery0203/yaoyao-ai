@@ -116,10 +116,11 @@ async function setupTurn(db: TestDatabase, responseText: string) {
 
   const provider = mockProvider(responseText);
   const router = new AIRouter({
-    providers: { mock: provider },
-    tiers: { conversation: ["mock"], structured: ["mock"] },
-    fallback: { conversation: [], structured: [] },
-  } as never);
+    l1: provider as never,
+    l2: provider as never,
+    l3: provider as never,
+    fallback: provider as never,
+  });
 
   const orchestrator = new ConversationOrchestrator({
     router,
