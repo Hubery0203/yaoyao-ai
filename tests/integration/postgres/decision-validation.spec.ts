@@ -15,7 +15,8 @@ import {
   replayDiagnostics,
   type PersistenceTransaction,
 } from "@yaoyao/application";
-import { DecisionEngine, validateResponse, asProposal } from "@yaoyao/runtime";
+import { DecisionEngine, validateResponse } from "@yaoyao/runtime";
+import { asProposal } from "@yaoyao/application";
 import { newUserId } from "@yaoyao/domain";
 import {
   dockerAvailable,
