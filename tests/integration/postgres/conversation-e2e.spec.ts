@@ -38,10 +38,10 @@ import {
   AIRouter,
   ConversationOrchestrator,
   MockLLMProvider,
-  asProposal,
   type ConversationEventPort,
   type LLMProposal,
 } from "@yaoyao/runtime";
+import { asProposal } from "@yaoyao/application";
 import {
   findCompletedTurn,
   initializeYaoYao,
