@@ -37,7 +37,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   AIRouter,
   ConversationOrchestrator,
-  MockLLMProvider,
   type ConversationEventPort,
   type LLMProposal,
 } from "@yaoyao/runtime";
@@ -61,16 +60,25 @@ import {
 const HAS_DOCKER = await dockerAvailable();
 
 /** Deterministic mock LLM: returns a fixed valid proposal. */
-function mockProvider(responseText: string): MockLLMProvider {
-  const provider = new MockLLMProvider();
-  provider.setProposal({
-    response: asProposal(responseText),
-    emotion_signal: asProposal({ dimensions: {}, intensity: 0.3 }),
-    memory_candidates: asProposal([]),
-    relationship_signal: asProposal({}),
-    behavior: asProposal({}),
-  } as unknown as LLMProposal);
-  return provider;
+function mockProvider(responseText: string) {
+  return {
+    providerId: "mock-test",
+    modelId: "mock-test-002G",
+    capabilities: {
+      supportsStructuredOutput: true,
+      maxContextTokens: 8000,
+      costTier: 1,
+    },
+    async generate() {
+      return {
+        response: asProposal(responseText),
+        emotion_signal: asProposal({ dimensions: {}, intensity: 0.3 }),
+        memory_candidates: asProposal([]),
+        relationship_signal: asProposal({}),
+        behavior: asProposal({}),
+      } as unknown as LLMProposal;
+    },
+  };
 }
 
 async function setupTurn(db: TestDatabase, responseText: string) {
