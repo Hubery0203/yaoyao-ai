@@ -276,4 +276,136 @@ describe.skipIf(!HAS_DOCKER)("MVP-002G: End-to-End Conversation (PostgreSQL)", (
     const assistantMsg = events.find((e) => e.event.type === "ASSISTANT_MESSAGE");
     expect((assistantMsg!.event.payload as { text: string }).text).toBe(out.response);
   });
+
+  it("G31: Tx2 failure is fatal — no response delivered without persistence", async () => {
+    const { userId, yaoyaoId, orchestrator } = await setupTurn(db, "不应该被送达。");
+    // Sabotage Tx2: make persistAssistantMessage throw.
+    const sabotaged = new ConversationOrchestrator({
+      // @ts-expect-error — reaching into deps for the test
+      router: orchestrator["router"],
+      contextData: orchestrator["deps"].contextData,
+      conversationEvents: {
+        persistUserMessage: (input: never) =>
+          db.manager.runAsUser((input as { userId: never }).userId, (tx) =>
+            persistUserMessage(tx, input),
+          ),
+        persistAssistantMessage: () => {
+          throw new Error("simulated Tx2 crash");
+        },
+        loadHistory: (input: never) =>
+          db.manager.runAsUser((input as { userId: never }).userId, (tx) =>
+            loadConversationHistory(tx, input),
+          ),
+        findCompletedTurn: (input: never) =>
+          db.manager.runAsUser((input as { userId: never }).userId, (tx) =>
+            findCompletedTurn(tx, input),
+          ),
+      },
+    });
+    await expect(
+      sabotaged.converse({
+        userId: String(userId),
+        text: "Tx2会崩",
+        traceId: "g31",
+        requestId: "g31-req",
+      }),
+    ).rejects.toThrow("simulated Tx2 crash");
+    // No ASSISTANT_MESSAGE persisted (Tx2 rolled back / never committed).
+    const events = await db.manager.runAsUser(userId, (tx) =>
+      tx.events.readOwnedAfter(userId, yaoyaoId, 0),
+    );
+    expect(events.some((e) => e.event.type === "ASSISTANT_MESSAGE")).toBe(false);
+    // USER_MESSAGE was persisted in Tx1 (crash was in Tx2 only).
+    expect(events.some((e) => e.event.type === "USER_MESSAGE")).toBe(true);
+  });
+
+  it("G32: retry after Tx2 failure recovers via idempotency (no duplicates)", async () => {
+    // Sabotage only the first attempt's Tx2; the retry succeeds.
+    const ctx = await setupTurn(db, "恢复后的回复。");
+    let tx2Calls = 0;
+    const flaky = new ConversationOrchestrator({
+      // @ts-expect-error — reaching into deps for the test
+      router: ctx.orchestrator["router"],
+      contextData: ctx.orchestrator["deps"].contextData,
+      conversationEvents: {
+        persistUserMessage: (input: never) =>
+          db.manager.runAsUser((input as { userId: never }).userId, (tx) =>
+            persistUserMessage(tx, input),
+          ),
+        persistAssistantMessage: (input: never) => {
+          tx2Calls++;
+          if (tx2Calls === 1) throw new Error("simulated Tx2 crash");
+          return db.manager.runAsUser((input as { userId: never }).userId, (tx) =>
+            persistAssistantMessage(tx, input),
+          );
+        },
+        loadHistory: (input: never) =>
+          db.manager.runAsUser((input as { userId: never }).userId, (tx) =>
+            loadConversationHistory(tx, input),
+          ),
+        findCompletedTurn: (input: never) =>
+          db.manager.runAsUser((input as { userId: never }).userId, (tx) =>
+            findCompletedTurn(tx, input),
+          ),
+      },
+    });
+    const req = {
+      userId: String(ctx.userId),
+      text: "重试恢复",
+      traceId: "g32a",
+      requestId: "g32-req",
+    };
+    await expect(flaky.converse(req)).rejects.toThrow("simulated Tx2 crash");
+    // Retry with the SAME requestId → recovers.
+    const out = await flaky.converse({ ...req, traceId: "g32b" });
+    expect(out.response).toBe("恢复后的回复。");
+    // Exactly one USER_MESSAGE and one ASSISTANT_MESSAGE (no duplicates).
+    const events = await db.manager.runAsUser(ctx.userId, (tx) =>
+      tx.events.readOwnedAfter(ctx.userId, ctx.yaoyaoId, 0),
+    );
+    const userMsgs = events.filter((e) => e.event.type === "USER_MESSAGE");
+    const assistantMsgs = events.filter((e) => e.event.type === "ASSISTANT_MESSAGE");
+    expect(userMsgs).toHaveLength(1);
+    expect(assistantMsgs).toHaveLength(1);
+    expect(tx2Calls).toBe(2);
+  });
+
+  it("G33: crash after Tx2 commit → retry returns stored response (no LLM re-run)", async () => {
+    const { userId, yaoyaoId, orchestrator } = await setupTurn(db, "已提交的回复。");
+    // Simulate: Tx2 committed, then process crashed before HTTP flush.
+    // (Pre-seed the ASSISTANT_MESSAGE directly.)
+    await db.manager.runAsUser(userId, (tx) =>
+      persistAssistantMessage(tx, {
+        userId,
+        yaoyaoId,
+        sessionId: null,
+        text: "已提交的回复。",
+        requestId: "g33-req",
+        traceId: "g33-seed",
+      }),
+    );
+    // Also seed the USER_MESSAGE so the turn looks complete.
+    await db.manager.runAsUser(userId, (tx) =>
+      persistUserMessage(tx, {
+        userId,
+        yaoyaoId,
+        sessionId: null,
+        text: "崩溃前的消息",
+        requestId: "g33-req",
+        traceId: "g33-seed",
+      }),
+    );
+    // Client retries with the same requestId → idempotent replay,
+    // stored response returned without re-running the LLM.
+    const out = await orchestrator.converse({
+      userId: String(userId),
+      text: "崩溃前的消息",
+      traceId: "g33-retry",
+      requestId: "g33-req",
+    });
+    expect(out.response).toBe("已提交的回复。");
+    expect(
+      (out.trace as { eventCreation?: { status?: string } }).eventCreation?.status,
+    ).toBe("idempotent-replay");
+  });
 });

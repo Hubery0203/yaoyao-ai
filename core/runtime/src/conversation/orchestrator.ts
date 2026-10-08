@@ -474,32 +474,34 @@ export class ConversationOrchestrator {
     // Tx2: persist ASSISTANT_MESSAGE with the FINAL delivered response
     // (G-RED-001). Only the validated/fallback response is stored —
     // never raw/rejected/repair-predecessor output.
+    //
+    // Crash recovery (MVP-002G v0.2): Tx2 failure is FATAL to the turn.
+    // We do NOT catch and deliver anyway — that would create a
+    // "delivered but not persisted" state that can never be reconciled
+    // (the user saw a response with no event log entry; a retry would
+    // generate a different response). Instead the turn throws, the
+    // client gets a 500, and retries with the same requestId:
+    //   - findCompletedTurn → null (no ASSISTANT_MESSAGE persisted)
+    //   - persistUserMessage → idempotent (returns the existing
+    //     USER_MESSAGE by correlationId=requestId, no duplicate)
+    //   - pipeline re-runs, Tx2 is retried
+    // Crash between Tx2 commit and HTTP flush is already safe: the
+    // retry's findCompletedTurn finds the persisted ASSISTANT_MESSAGE
+    // and returns the stored response without re-running the LLM (G25).
     if (conversationEvents) {
-      try {
-        const persisted = await conversationEvents.persistAssistantMessage({
-          userId: input.userId as never,
-          yaoyaoId: yaoyaoId as never,
-          sessionId: input.sessionId ?? null,
-          text: response,
-          requestId,
-          traceId: input.traceId,
-        });
-        (trace as { eventRecording?: unknown }).eventRecording = {
-          status: "persisted",
-          assistantMessageEventId: persisted.eventId,
-          requestId,
-        };
-      } catch (err) {
-        // §12: delivery succeeded but persistence failed — record the
-        // failure; the turn's response is already in the trace for
-        // durable reconciliation (never rely on memory alone).
-        (trace as { eventRecording?: unknown }).eventRecording = {
-          status: "persistence-failed",
-          requestId,
-          error: err instanceof Error ? err.message : String(err),
-          deliveredResponse: response,
-        };
-      }
+      const persisted = await conversationEvents.persistAssistantMessage({
+        userId: input.userId as never,
+        yaoyaoId: yaoyaoId as never,
+        sessionId: input.sessionId ?? null,
+        text: response,
+        requestId,
+        traceId: input.traceId,
+      });
+      (trace as { eventRecording?: unknown }).eventRecording = {
+        status: "persisted",
+        assistantMessageEventId: persisted.eventId,
+        requestId,
+      };
     } else {
       (trace as { eventRecording?: unknown }).eventRecording = {
         status: "skipped-no-conversation-events",
