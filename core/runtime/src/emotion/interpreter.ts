@@ -94,7 +94,16 @@ export class RouterEmotionInterpreter implements EmotionInterpreter {
         `Recent conversation: ${input.recentConversation.slice(-3).join(" | ") || "none"}`,
       ].join("\n\n"),
       userInput: input.currentInput,
-      decision: { primaryIntent: "interpret-emotion", conversationMode: "normal" },
+      decision: {
+        primaryIntent: "answer",
+        secondaryIntents: [],
+        conversationMode: "normal",
+        emotionalExpression: "none",
+        initiative: "none",
+        followUp: "none",
+        topicContinuity: "continue",
+        selfExpression: "none",
+      },
       outputSchemaName: EMOTION_PROPOSAL_SCHEMA_NAME,
       timeoutMs: 20_000,
       metadata: {

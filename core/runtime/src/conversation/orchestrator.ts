@@ -26,13 +26,11 @@
  */
 import {
   EmptyMemoryRetrieval,
-  unwrapProposal,
   type ContextDataPort,
   type EmotionInterpreter,
   type EmotionStateWriter,
   type LLMRequest,
   type MemoryRetrieval,
-  type RuntimeDecision,
 } from "@yaoyao/application";
 import {
   EMOTION_DIMENSIONS,
@@ -43,8 +41,13 @@ import {
 import { randomUUID } from "node:crypto";
 import { ContextAssembler } from "../context/assembly.js";
 import { createTrace } from "../contracts/trace.js";
-import { validateProposalMinimal } from "../validation/minimal.js";
+import { DecisionEngine, renderDecisionGuidance } from "../decision/engine.js";
 import { validateEmotionProposal } from "../emotion/validation.js";
+import {
+  buildFallbackResponse,
+  buildRepairInstruction,
+  validateResponse,
+} from "../validation/response.js";
 import { AIRouter } from "../router/router.js";
 import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
@@ -171,17 +174,39 @@ export class ConversationOrchestrator {
     };
     executedSteps.push("context-assembly");
 
-    // Step 5 — Decision (skeleton: fixed default; real engine in 002F).
-    const decision: RuntimeDecision = {
-      primaryIntent: "answer",
-      conversationMode: "normal",
+    // Step 5 — Decision (REAL in MVP-002F).
+    // Decision Engine: deterministic baseline → validation → final decision.
+    // Decision ≠ Response: this is behavioral guidance, not authority.
+    const decisionStart = Date.now();
+    const decisionEngine = new DecisionEngine();
+    const currentEmotionForDecision = Object.fromEntries(
+      EMOTION_DIMENSIONS.map((d) => [d, personaData.state.emotion.get(d)]),
+    ) as Record<EmotionDimension, number>;
+    const { decision, source: decisionSource } = decisionEngine.decide({
+      userId: String(input.userId),
+      yaoyaoId: String(personaData.yaoyao.yaoyaoId),
+      currentInput: input.text,
+      situation: {
+        intent: situation.intent,
+        urgency: situation.urgency,
+        taskNature: situation.taskNature,
+      },
+      emotion: currentEmotionForDecision,
+      personaTone: "warm",
+      recentConversation: [],
+      traceId: input.traceId,
+    });
+    (trace as { decision?: unknown }).decision = {
+      ...decision,
+      source: decisionSource,
+      latencyMs: Date.now() - decisionStart,
     };
-    (trace as { decision?: unknown }).decision = decision;
     executedSteps.push("decision");
 
     // Step 6 — LLM Generation: router selects the provider for this turn
     // (task=conversation → L2), then the resilient invoker handles
     // retry/fallback. The runtime never touches a vendor SDK.
+    // The Decision is rendered as behavioral guidance into the system prompt.
     const selected = this.deps.router.select({
       task: "conversation",
       fallbackAllowed: true,
@@ -193,14 +218,17 @@ export class ConversationOrchestrator {
     const llmRequest: LLMRequest = {
       userId: input.userId as UserId,
       yaoyaoId: assembled.yaoyaoId as never,
-      systemContext: assembled.promptContext.systemPrompt,
+      systemContext: [
+        assembled.promptContext.systemPrompt,
+        renderDecisionGuidance(decision),
+      ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInput: input.text,
       decision,
       outputSchemaName: "llm-output-contract-v1",
       timeoutMs: 30_000,
       metadata: {
-        runtimeVersion: "mvp-002c",
+        runtimeVersion: "mvp-002f",
         contextVersion: "c0-c7-v1",
         requestId: input.traceId,
       },
@@ -216,12 +244,69 @@ export class ConversationOrchestrator {
     };
     executedSteps.push("llm-generation");
 
-    // Step 7 — Behavior Validation: minimal structural gate (full in 002F).
-    const validated = validateProposalMinimal(proposal);
+    // Step 7 — Response Validation (FULL in MVP-002F).
+    // Pipeline: schema → identity → relationship → behavior → continuity
+    // → safety → core-proposal. On failure: one repair retry, then fallback.
+    // Validation NEVER mutates Core State — it is a gate, not an authority.
+    const validationStart = Date.now();
+    let validationOutcome = validateResponse({
+      proposal,
+      decision,
+      userInput: input.text,
+      recentConversation: [],
+    });
+    let repairAttempts = 0;
+    let fallbackUsed = false;
+    const MAX_REPAIR_ATTEMPTS = 1;
+
+    while (!validationOutcome.passed && repairAttempts < MAX_REPAIR_ATTEMPTS) {
+      repairAttempts += 1;
+      const repairRequest: LLMRequest = {
+        ...llmRequest,
+        systemContext: [
+          llmRequest.systemContext,
+          buildRepairInstruction(
+            validationOutcome.stage,
+            validationOutcome.reason,
+          ),
+        ].join("\n\n"),
+        metadata: {
+          ...llmRequest.metadata,
+          requestId: `${input.traceId}-repair-${repairAttempts}`,
+        },
+      };
+      const repaired = await invoker.invoke(repairRequest);
+      validationOutcome = validateResponse({
+        proposal: repaired.proposal,
+        decision,
+        userInput: input.text,
+        recentConversation: [],
+      });
+    }
+
+    let finalResponse: string;
+    if (validationOutcome.passed) {
+      finalResponse = validationOutcome.response;
+    } else {
+      // Fallback: safe YaoYao-style response. Never exposes internals.
+      fallbackUsed = true;
+      finalResponse = buildFallbackResponse({
+        userInput: input.text,
+        decision,
+      });
+    }
     (trace as { validation?: unknown }).validation = {
-      stagesPassed: ["minimal-structure"],
-      repairs: 0,
-      fallbackTriggered: false,
+      stagesPassed: validationOutcome.passed
+        ? ["schema", "identity", "relationship", "behavior", "continuity", "safety", "core-proposal"]
+        : [],
+      validationPassed: validationOutcome.passed,
+      validationFailureReason: validationOutcome.passed
+        ? undefined
+        : `${validationOutcome.stage}: ${validationOutcome.reason}`,
+      validationLatencyMs: Date.now() - validationStart,
+      repairAttempts,
+      fallbackUsed,
+      finalResponseAccepted: true,
     };
     executedSteps.push("behavior-validation");
 
@@ -316,8 +401,9 @@ export class ConversationOrchestrator {
     (trace as { writeback?: unknown }).writeback = writebackTrace;
     executedSteps.push("state-memory-processing");
 
-    // Step 9 — Response Delivery: the ONLY legal unwrap site.
-    const response = unwrapProposal(validated.response);
+    // Step 9 — Response Delivery: the ONLY legal release site.
+    // finalResponse is either the validated LLM output or the safe fallback.
+    const response = finalResponse;
     executedSteps.push("response-delivery");
 
     // Step 10 — Event Recording: skeleton (Migration 0003 deferred).

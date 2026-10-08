@@ -98,6 +98,12 @@ export interface RuntimeDecision {
 }
 
 /**
+ * Decision — MVP-002F full behavioral contract.
+ * Re-exported here for LLMRequest; canonical definition in ports/decision.ts.
+ */
+export type { Decision } from "./decision.js";
+
+/**
  * LLMRequest — PROVIDER-NEUTRAL (002C authorization §VI).
  *
  * The runtime produces this shape. Adapters translate it into
@@ -112,7 +118,7 @@ export interface LLMRequest {
   readonly conversationContext: string;
   /** C7 — the user's raw input. Marked as user data, never instructions. */
   readonly userInput: string;
-  readonly decision: RuntimeDecision;
+  readonly decision: import("./decision.js").Decision;
   readonly outputSchemaName: string;
   readonly timeoutMs: number;
   readonly metadata: {

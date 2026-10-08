@@ -11,6 +11,7 @@ export * from "./ports/llm.js";
 export * from "./ports/context-data.js";
 export * from "./ports/memory-retrieval.js";
 export * from "./ports/emotion.js";
+export * from "./ports/decision.js";
 export {
   initializeYaoYao,
   type InitializeYaoYaoInput,

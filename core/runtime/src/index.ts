@@ -36,6 +36,14 @@ export {
   validateEmotionProposal,
   type ValidationOutcome,
 } from "./emotion/validation.js";
+export { DecisionEngine, baselineDecision, validateDecision, renderDecisionGuidance } from "./decision/engine.js";
+export {
+  validateResponse,
+  buildFallbackResponse,
+  buildRepairInstruction,
+  type ResponseValidationResult,
+  type ValidationStage,
+} from "./validation/response.js";
 export { estimateUsage, DEFAULT_PRICING, type ModelPricing, type PricingTable } from "./router/usage.js";
 export { PersonaRuntime } from "./persona/persona-runtime.js";
 export {

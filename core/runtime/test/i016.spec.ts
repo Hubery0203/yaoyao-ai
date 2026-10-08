@@ -13,13 +13,11 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   asProposal,
   unwrapProposal,
+  type Decision,
   type LLMProposal,
   type Proposal,
 } from "@yaoyao/application";
-import {
-  ProposalValidationError,
-  validateProposalMinimal,
-} from "@yaoyao/runtime";
+import { validateResponse } from "@yaoyao/runtime";
 
 describe("I-016: Proposal<T> branding", () => {
   it("a Proposal<string> is not assignable to string", () => {
@@ -47,10 +45,10 @@ describe("I-016: Proposal<T> branding", () => {
   });
 });
 
-describe("I-016: minimal validation gate", () => {
+describe("I-016: response validation gate (002F full pipeline)", () => {
   function validProposal(): LLMProposal {
     return {
-      response: asProposal("hi"),
+      response: asProposal("嗨，宝贝，我在呢。"),
       emotion_signal: asProposal({}),
       memory_candidates: asProposal([]),
       relationship_signal: asProposal({}),
@@ -58,30 +56,65 @@ describe("I-016: minimal validation gate", () => {
     };
   }
 
+  function testDecision(): Decision {
+    return {
+      primaryIntent: "answer",
+      secondaryIntents: [],
+      conversationMode: "normal",
+      emotionalExpression: "low",
+      initiative: "moderate",
+      followUp: "optional",
+      topicContinuity: "continue",
+      selfExpression: "low",
+    };
+  }
+
   it("accepts a well-formed proposal", () => {
-    expect(() => validateProposalMinimal(validProposal())).not.toThrow();
+    const result = validateResponse({
+      proposal: validProposal(),
+      decision: testDecision(),
+      userInput: "你好",
+      recentConversation: [],
+    });
+    expect(result.passed).toBe(true);
   });
 
-  it("rejects a raw (non-Proposal) response field", () => {
+  it("rejects a raw (non-Proposal) response field at schema stage", () => {
     const bad = validProposal() as unknown as Record<string, unknown>;
     bad["response"] = "raw string — not a proposal";
-    expect(() => validateProposalMinimal(bad as unknown as LLMProposal)).toThrow(
-      ProposalValidationError,
-    );
+    const result = validateResponse({
+      proposal: bad as unknown as LLMProposal,
+      decision: testDecision(),
+      userInput: "你好",
+      recentConversation: [],
+    });
+    expect(result.passed).toBe(false);
+    if (!result.passed) expect(result.stage).toBe("schema");
   });
 
   it("rejects an empty response string", () => {
     const bad = validProposal();
     (bad as { response: Proposal<string> }).response = asProposal("");
-    expect(() => validateProposalMinimal(bad)).toThrow(ProposalValidationError);
+    const result = validateResponse({
+      proposal: bad,
+      decision: testDecision(),
+      userInput: "你好",
+      recentConversation: [],
+    });
+    expect(result.passed).toBe(false);
   });
 
   it("rejects a missing field", () => {
     const bad = validProposal() as unknown as Record<string, unknown>;
     delete bad["behavior"];
-    expect(() => validateProposalMinimal(bad as unknown as LLMProposal)).toThrow(
-      ProposalValidationError,
-    );
+    const result = validateResponse({
+      proposal: bad as unknown as LLMProposal,
+      decision: testDecision(),
+      userInput: "你好",
+      recentConversation: [],
+    });
+    expect(result.passed).toBe(false);
+    if (!result.passed) expect(result.stage).toBe("schema");
   });
 });
 
