@@ -18,6 +18,10 @@ export const EVENT_TYPES = [
   "SESSION_ENDED",
   "STATE_CHANGED",
   "MEMORY_CORRECTED",
+  // MVP-002G (additive): conversation message events for C6 history.
+  // Purely additive — no existing type semantics modified.
+  "USER_MESSAGE",
+  "ASSISTANT_MESSAGE",
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

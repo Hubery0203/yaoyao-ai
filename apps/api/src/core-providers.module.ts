@@ -2,6 +2,7 @@ import { Global, Inject, Module, type OnModuleDestroy } from "@nestjs/common";
 import {
   AUTH_CREDENTIALS,
   CONTEXT_DATA,
+  CONVERSATION_EVENTS,
   EMOTION_INTERPRETER,
   EMOTION_STATE_WRITER,
   HEALTH_PROBE,
@@ -9,6 +10,7 @@ import {
   PASSWORD_HASHER,
   TOKEN_SERVICE,
   TRANSACTION_MANAGER,
+  type ConversationEventPort,
   type EmotionInterpreter,
   type EmotionStateWriter,
   type MemoryRetrieval,
@@ -37,6 +39,7 @@ import {
 } from "@yaoyao/runtime";
 import { TransactionalContextDataAdapter } from "./persona-context.adapter.js";
 import { TransactionalEmotionWriter } from "./emotion-writer.adapter.js";
+import { TransactionalConversationEvents } from "./conversation-events.adapter.js";
 import type { LLMProvider } from "@yaoyao/application";
 
 /**
@@ -167,6 +170,11 @@ const PG_POOL = "YAOYAO_PG_POOL";
       provide: EMOTION_STATE_WRITER,
       useClass: TransactionalEmotionWriter,
     },
+    // MVP-002G: conversation events (USER_MESSAGE/ASSISTANT_MESSAGE + C6).
+    {
+      provide: CONVERSATION_EVENTS,
+      useClass: TransactionalConversationEvents,
+    },
     {
       provide: CONVERSATION_ORCHESTRATOR,
       inject: [
@@ -175,6 +183,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
         MEMORY_RETRIEVAL,
         EMOTION_INTERPRETER,
         EMOTION_STATE_WRITER,
+        CONVERSATION_EVENTS,
       ],
       useFactory: (
         router: AIRouter,
@@ -182,6 +191,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
         memoryRetrieval: MemoryRetrieval,
         emotionInterpreter: EmotionInterpreter,
         emotionWriter: EmotionStateWriter,
+        conversationEvents: ConversationEventPort,
       ) =>
         new ConversationOrchestrator({
           router,
@@ -189,6 +199,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
           memoryRetrieval,
           emotionInterpreter,
           emotionWriter,
+          conversationEvents,
         }),
     },
   ],
@@ -203,6 +214,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     MEMORY_RETRIEVAL,
     EMOTION_INTERPRETER,
     EMOTION_STATE_WRITER,
+    CONVERSATION_EVENTS,
     CONVERSATION_ORCHESTRATOR,
   ],
 })

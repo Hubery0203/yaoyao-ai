@@ -27,6 +27,7 @@
 import {
   EmptyMemoryRetrieval,
   type ContextDataPort,
+  type ConversationEventPort,
   type EmotionInterpreter,
   type EmotionStateWriter,
   type LLMRequest,
@@ -73,6 +74,13 @@ export interface OrchestratorDeps {
    * TransactionalEmotionWriter.
    */
   readonly emotionWriter?: EmotionStateWriter;
+  /**
+   * MVP-002G: Conversation event port (USER_MESSAGE/ASSISTANT_MESSAGE
+   * persistence + C6 history). Optional — when absent, Steps 1/2/10
+   * keep their in-memory behavior and C6 stays empty. Production wiring
+   * injects TransactionalConversationEvents.
+   */
+  readonly conversationEvents?: ConversationEventPort;
 }
 
 /** NestJS injection token for the ConversationOrchestrator. */
@@ -113,17 +121,65 @@ export class ConversationOrchestrator {
   async converse(input: TurnInput): Promise<TurnOutput> {
     const trace = createTrace(input.traceId, input.userId);
     const executedSteps: PipelineStep[] = [];
+    const requestId = input.requestId ?? randomUUID();
+    const conversationEvents = this.deps.conversationEvents;
 
     // Step 1 — User Input: already validated at the API boundary (Zod DTO).
     executedSteps.push("user-input");
 
-    // Step 2 — Event Creation: construct + validate the pending event IN MEMORY.
+    // Persona data is needed early (idempotency check needs yaoyaoId).
+    // Loaded once, reused by Steps 2, 4, 8.
+    const personaData = await this.deps.contextData.loadPersonaData(
+      input.userId as UserId,
+    );
+    const yaoyaoId = personaData.yaoyao.yaoyaoId as YaoYaoId;
+
+    // Step 2 — Event Creation (REAL in MVP-002G).
+    // Idempotency first: if this requestId already completed, return the
+    // stored response without re-running the turn (G25).
     const pending = this.createPendingEvent(input);
-    (trace as { eventCreation?: unknown }).eventCreation = {
-      messageId: pending.messageId,
-      correlationId: pending.correlationId,
-      status: "pending",
-    };
+    if (conversationEvents) {
+      const replay = await conversationEvents.findCompletedTurn({
+        userId: input.userId as never,
+        yaoyaoId: yaoyaoId as never,
+        requestId,
+      });
+      if (replay !== null) {
+        (trace as { eventCreation?: unknown }).eventCreation = {
+          messageId: pending.messageId,
+          correlationId: pending.correlationId,
+          status: "idempotent-replay",
+          requestId,
+        };
+        executedSteps.push("event-creation");
+        (trace as { steps?: unknown }).steps = executedSteps;
+        (trace as { finishedAt?: unknown }).finishedAt = new Date().toISOString();
+        return { response: replay, trace };
+      }
+      // Tx1a: persist USER_MESSAGE (idempotent on requestId).
+      const persisted = await conversationEvents.persistUserMessage({
+        userId: input.userId as never,
+        yaoyaoId: yaoyaoId as never,
+        sessionId: input.sessionId ?? null,
+        text: input.text,
+        requestId,
+        traceId: input.traceId,
+      });
+      (trace as { eventCreation?: unknown }).eventCreation = {
+        messageId: pending.messageId,
+        correlationId: pending.correlationId,
+        status: persisted.duplicate ? "duplicate-suppressed" : "persisted",
+        requestId,
+        userMessageEventId: persisted.eventId,
+      };
+    } else {
+      (trace as { eventCreation?: unknown }).eventCreation = {
+        messageId: pending.messageId,
+        correlationId: pending.correlationId,
+        status: "pending",
+        requestId,
+      };
+    }
     executedSteps.push("event-creation");
 
     // Step 3 — Situation Understanding (skeleton).
@@ -131,15 +187,22 @@ export class ConversationOrchestrator {
     (trace as { situation?: unknown }).situation = situation;
     executedSteps.push("situation-understanding");
 
-    // Step 4 — Context Assembly (REAL in MVP-002B; C4 live in 002D).
-    // Load PersonaData (read-only) → Memory Retrieval (read-only) →
-    // Persona Runtime → C0–C7 → budget.
-    const personaData = await this.deps.contextData.loadPersonaData(
-      input.userId as UserId,
+    // Step 4 — Context Assembly (REAL in MVP-002B; C4 live in 002D;
+    // C6 live in 002G). PersonaData was loaded in Step 2 (reused here).
+    // History → Memory Retrieval (read-only) → Persona Runtime → C0–C7 → budget.
+    // MVP-002G: load conversation history first (feeds C6 + retrieval).
+    const conversationHistory = conversationEvents
+      ? await conversationEvents.loadHistory({
+          userId: input.userId as never,
+          yaoyaoId: yaoyaoId as never,
+          limit: 20,
+        })
+      : [];
+    const recentConversationTexts = conversationHistory.map(
+      (t) => `${t.role === "user" ? "User" : "YaoYao"}: ${t.text}`,
     );
     // MVP-002D: retrieve relevant memories. The yaoyaoId is server-resolved
     // from PersonaData (§VIII) — never trusted from client input.
-    // recentConversation is empty until Migration 0003 populates C6.
     const memoryRetrieval = this.deps.memoryRetrieval ?? new EmptyMemoryRetrieval();
     const memoryContext = await memoryRetrieval.retrieve({
       userId: input.userId as UserId,
@@ -154,7 +217,7 @@ export class ConversationOrchestrator {
         type: personaData.relationship.type,
         status: personaData.relationship.status,
       },
-      recentConversation: [],
+      recentConversation: recentConversationTexts.slice(-6),
       limit: 50,
       traceId: input.traceId,
     });
@@ -162,6 +225,7 @@ export class ConversationOrchestrator {
       data: personaData,
       inputText: input.text,
       memoryContext,
+      conversationHistory,
     });
     (trace as { context?: unknown }).context = {
       layersIncluded: [...assembled.promptContext.layersIncluded],
@@ -406,11 +470,41 @@ export class ConversationOrchestrator {
     const response = finalResponse;
     executedSteps.push("response-delivery");
 
-    // Step 10 — Event Recording: skeleton (Migration 0003 deferred).
-    (trace as { eventRecording?: unknown }).eventRecording = {
-      status: "skipped-skeleton",
-      note: "USER_MESSAGE/ASSISTANT_MESSAGE persistence arrives with Migration 0003",
-    };
+    // Step 10 — Event Recording (REAL in MVP-002G).
+    // Tx2: persist ASSISTANT_MESSAGE with the FINAL delivered response
+    // (G-RED-001). Only the validated/fallback response is stored —
+    // never raw/rejected/repair-predecessor output.
+    if (conversationEvents) {
+      try {
+        const persisted = await conversationEvents.persistAssistantMessage({
+          userId: input.userId as never,
+          yaoyaoId: yaoyaoId as never,
+          sessionId: input.sessionId ?? null,
+          text: response,
+          requestId,
+          traceId: input.traceId,
+        });
+        (trace as { eventRecording?: unknown }).eventRecording = {
+          status: "persisted",
+          assistantMessageEventId: persisted.eventId,
+          requestId,
+        };
+      } catch (err) {
+        // §12: delivery succeeded but persistence failed — record the
+        // failure; the turn's response is already in the trace for
+        // durable reconciliation (never rely on memory alone).
+        (trace as { eventRecording?: unknown }).eventRecording = {
+          status: "persistence-failed",
+          requestId,
+          error: err instanceof Error ? err.message : String(err),
+          deliveredResponse: response,
+        };
+      }
+    } else {
+      (trace as { eventRecording?: unknown }).eventRecording = {
+        status: "skipped-no-conversation-events",
+      };
+    }
     executedSteps.push("event-recording");
 
     (trace as { steps?: unknown }).steps = executedSteps;

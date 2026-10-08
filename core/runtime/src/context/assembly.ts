@@ -28,11 +28,11 @@ import {
   LAYER_PRIORITY,
   type ContextLayer,
   type ContextLayerId,
-  type ConversationTurn,
   type PromptContext,
   type RecentEventProjection,
   type RelevantMemoryContext,
 } from "./layers.js";
+import type { ConversationTurn } from "@yaoyao/application";
 import { PersonaRuntime } from "../persona/persona-runtime.js";
 
 export interface AssembledContext {
@@ -51,6 +51,11 @@ export interface AssembleInput {
    * empty path — the layer contract is unchanged.
    */
   readonly memoryContext?: RelevantMemoryContext;
+  /**
+   * Conversation history for C6 (MVP-002G). Ordered turns (oldest
+   * first). When absent/empty, C6 renders the empty path.
+   */
+  readonly conversationHistory?: ReadonlyArray<ConversationTurn>;
 }
 
 const DEFAULT_BUDGET: BudgetConfig = {
@@ -92,7 +97,7 @@ export class ContextAssembler {
   constructor(private readonly budget: BudgetConfig = DEFAULT_BUDGET) {}
 
   assemble(input: AssembleInput): AssembledContext {
-    const { data, inputText, memoryContext } = input;
+    const { data, inputText, memoryContext, conversationHistory } = input;
     const behavioral = this.persona.build({
       relationship: data.relationship,
       state: data.state,
@@ -105,7 +110,7 @@ export class ContextAssembler {
       this.buildC3(behavioral),
       this.buildC4(memoryContext),
       this.buildC5(data.recentEvents),
-      this.buildC6(),
+      this.buildC6(conversationHistory),
       this.buildC7(inputText),
     ];
 
@@ -191,14 +196,18 @@ export class ContextAssembler {
     return makeLayer("C5", LAYER_PRIORITY.C5, content);
   }
 
-  private buildC6(): ContextLayer {
-    // Interface exists (ConversationTurn[]); population waits for
-    // USER_MESSAGE/ASSISTANT_MESSAGE event types (Migration 0003).
-    const turns: ConversationTurn[] = [];
+  private buildC6(turns: ReadonlyArray<ConversationTurn> = []): ContextLayer {
+    // MVP-002G: populated from persisted USER_MESSAGE/ASSISTANT_MESSAGE
+    // events. Projection only — role + text, no DB internals.
     const content =
       turns.length === 0
-        ? "Conversation history: no prior turns in scope (history population arrives with conversation event types)."
-        : turns.map((t) => `${t.role}: ${t.text}`).join("\n");
+        ? "Conversation history: no prior turns in scope."
+        : [
+            "Conversation history (most recent last):",
+            ...turns.map(
+              (t) => `${t.role === "user" ? "User" : "YaoYao"}: ${t.text}`,
+            ),
+          ].join("\n");
     return makeLayer("C6", LAYER_PRIORITY.C6, content);
   }
 

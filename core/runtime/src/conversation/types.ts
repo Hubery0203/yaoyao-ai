@@ -11,6 +11,13 @@ export interface TurnInput {
   readonly userId: string;
   readonly text: string;
   readonly traceId: string;
+  /**
+   * MVP-002G: idempotency key for this turn. When absent, a UUID is
+   * generated (no idempotency across retries). Duplicates with the same
+   * requestId return the stored response without re-running the turn.
+   */
+  readonly requestId?: string;
+  readonly sessionId?: string | null;
 }
 
 export interface TurnOutput {

@@ -12,6 +12,7 @@ export * from "./ports/context-data.js";
 export * from "./ports/memory-retrieval.js";
 export * from "./ports/emotion.js";
 export * from "./ports/decision.js";
+export * from "./ports/conversation.js";
 export {
   initializeYaoYao,
   type InitializeYaoYaoInput,
@@ -56,3 +57,9 @@ export {
   type ReplayDiff,
 } from "./usecases/replay.js";
 export { applyEmotionProposal } from "./usecases/emotion.js";
+export {
+  persistUserMessage,
+  persistAssistantMessage,
+  loadConversationHistory,
+  findCompletedTurn,
+} from "./usecases/conversation.js";
