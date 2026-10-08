@@ -282,7 +282,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002G: End-to-End Conversation (PostgreSQL)", (
     // Sabotage Tx2: make persistAssistantMessage throw.
     const sabotaged = new ConversationOrchestrator({
       // @ts-expect-error — reaching into deps for the test
-      router: orchestrator["router"],
+      router: orchestrator["deps"].router,
       contextData: orchestrator["deps"].contextData,
       conversationEvents: {
         persistUserMessage: (input: never) =>
@@ -325,7 +325,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002G: End-to-End Conversation (PostgreSQL)", (
     let tx2Calls = 0;
     const flaky = new ConversationOrchestrator({
       // @ts-expect-error — reaching into deps for the test
-      router: ctx.orchestrator["router"],
+      router: ctx.orchestrator["deps"].router,
       contextData: ctx.orchestrator["deps"].contextData,
       conversationEvents: {
         persistUserMessage: (input: never) =>
