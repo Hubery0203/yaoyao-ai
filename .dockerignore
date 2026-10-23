@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+.local
+outputs
+deploy/private
+**/*.dump
+**/*.pem
+**/*.key
+.DS_Store

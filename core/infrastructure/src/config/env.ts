@@ -9,6 +9,8 @@ import { z } from "zod";
  */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  LITE_MODE: z.enum(["0","1"]).default("0"),
+  PG_POOL_MAX: z.coerce.number().int().min(1).max(10).default(10),
   HOST: z.enum(["127.0.0.1", "0.0.0.0", "::1"]).default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z

@@ -23,11 +23,7 @@ export async function persistUserMessage(
 ): Promise<{ eventId: string; duplicate: boolean }> {
   await tx.continuity.lockTurn(input.userId, input.yaoyaoId, input.requestId);
   // Idempotency: check for an existing USER_MESSAGE with this requestId.
-  const existing = await tx.events.readOwnedAfter(
-    input.userId,
-    input.yaoyaoId,
-    0,
-  );
+  const existing = tx.events.readWindow?(await tx.events.readWindow(input.userId,input.yaoyaoId,{requestId:input.requestId,types:["USER_MESSAGE"],limit:1})).events:await tx.events.readOwnedAfter(input.userId,input.yaoyaoId,0);
   const dup = existing.find(
     (e) =>
       e.event.type === "USER_MESSAGE" &&
@@ -61,7 +57,7 @@ export async function persistAssistantMessage(
   input: PersistMessageInput,
 ): Promise<{ eventId: string; response?: string }> {
   await tx.continuity.lockTurn(input.userId, input.yaoyaoId, input.requestId);
-  const events = await tx.events.readOwnedAfter(input.userId, input.yaoyaoId, 0);
+  const events = tx.events.readWindow?(await tx.events.readWindow(input.userId,input.yaoyaoId,{requestId:input.requestId,types:["ASSISTANT_MESSAGE"],limit:1})).events:await tx.events.readOwnedAfter(input.userId,input.yaoyaoId,0);
   const existing = events.find(({ event }) => event.type === "ASSISTANT_MESSAGE" && event.correlationId === input.requestId);
   if (existing) {
     const eventId = String(existing.event.eventId);
@@ -98,11 +94,7 @@ export async function findCompletedTurn(
     text?: string;
   },
 ): Promise<string | null> {
-  const events = await tx.events.readOwnedAfter(
-    input.userId,
-    input.yaoyaoId,
-    0,
-  );
+  const events = tx.events.readWindow?(await tx.events.readWindow(input.userId,input.yaoyaoId,{requestId:input.requestId,types:["USER_MESSAGE","ASSISTANT_MESSAGE"],limit:2})).events:await tx.events.readOwnedAfter(input.userId,input.yaoyaoId,0);
   const found = events.find(
     (e) =>
       e.event.type === "ASSISTANT_MESSAGE" &&
@@ -126,11 +118,7 @@ export async function loadConversationHistory(
     limit: number;
   },
 ): Promise<ReadonlyArray<ConversationTurn>> {
-  const events = await tx.events.readOwnedAfter(
-    input.userId,
-    input.yaoyaoId,
-    0,
-  );
+  const events = tx.events.readWindow?(await tx.events.readWindow(input.userId,input.yaoyaoId,{types:["USER_MESSAGE","ASSISTANT_MESSAGE"],limit:input.limit})).events:await tx.events.readOwnedAfter(input.userId,input.yaoyaoId,0);
   const turns: ConversationTurn[] = [];
   for (const { event, aggregateSeq } of events) {
     if (

@@ -1,3 +1,4 @@
+import { LiteRuntimeService } from "./lite-runtime.service.js";
 import { TransactionalTemporalEmotionWriter } from "./temporal-emotion.adapter.js";
 import { TEMPORAL_EMOTION_WRITER, type TemporalEmotionWriter } from "@yaoyao/application";
 import { Global, Inject, Module, type OnModuleDestroy } from "@nestjs/common";
@@ -89,6 +90,8 @@ const PG_POOL = "YAOYAO_PG_POOL";
 @Global()
 @Module({
   providers: [
+    LiteRuntimeService,
+    {provide:"CONVERSATION_GATE",useExisting:LiteRuntimeService},
     {provide:"YAOYAO_CONNECTION_INFO",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>({
       provider:config.LLM_L2_PROVIDER,model:config.LLM_L2_PROVIDER==="deepseek"?config.DEEPSEEK_MODEL:
         config.LLM_L2_PROVIDER==="openai"?config.OPENAI_MODEL:"mock"})},
@@ -106,7 +109,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
             "DATABASE_URL is required for the API host; refusing to start",
           );
         }
-        return createPgPool({ connectionString: config.DATABASE_URL });
+        return createPgPool({ connectionString: config.DATABASE_URL,max:config.PG_POOL_MAX });
       },
     },
     {
@@ -213,6 +216,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     },
   ],
   exports: [
+    "CONVERSATION_GATE",
     "YAOYAO_CONNECTION_INFO",
     TRANSACTION_MANAGER,
     PASSWORD_HASHER,
