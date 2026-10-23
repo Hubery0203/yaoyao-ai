@@ -54,6 +54,7 @@ import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 
 export interface OrchestratorDeps {
+  readonly temporalEmotion?: import("@yaoyao/application").TemporalEmotionWriter;
   readonly router: AIRouter;
   readonly contextData: ContextDataPort;
   /**
@@ -129,7 +130,7 @@ export class ConversationOrchestrator {
 
     // Persona data is needed early (idempotency check needs yaoyaoId).
     // Loaded once, reused by Steps 2, 4, 8.
-    const personaData = await this.deps.contextData.loadPersonaData(
+    let personaData = await this.deps.contextData.loadPersonaData(
       input.userId as UserId,
     );
     const yaoyaoId = personaData.yaoyao.yaoyaoId as YaoYaoId;
@@ -181,6 +182,11 @@ export class ConversationOrchestrator {
       };
     }
     executedSteps.push("event-creation");
+    // Explicit command after completed-turn replay guard; context reads stay pure.
+    if (this.deps.temporalEmotion) {
+      await this.deps.temporalEmotion.advance(input.userId as UserId, requestId);
+      personaData=await this.deps.contextData.loadPersonaData(input.userId as UserId);
+    }
 
     // Step 3 — Situation Understanding (skeleton).
     const situation = { intent: "chat", urgency: "normal", taskNature: "general" };

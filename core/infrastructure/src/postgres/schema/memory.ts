@@ -127,6 +127,7 @@ export const memories = pgTable(
       sql`${t.timesRecalled} >= 0`,
     ),
     check("memories_chronology", sql`${t.updatedAt} >= ${t.createdAt}`),
+    uniqueIndex("memories_id_owner_unique").on(t.memoryId,t.userId,t.yaoyaoId),
     // A memory version can supersede at most one predecessor (partial unique).
     uniqueIndex("memories_supersedes_uidx")
       .on(t.supersedes)

@@ -1,52 +1,36 @@
-import { createLogger, createRedisConnection, loadConfig } from "@yaoyao/infrastructure";
-
-/**
- * Worker host bootstrap — BullMQ background-job host.
- *
- * MVP-001 Phase 1: the host boots, connects to Redis when configured, and
- * registers NO queues. Scheduler/proactive evaluation interfaces arrive with
- * later milestones (Proactive is MVP-009; BullMQ is coordination-only and
- * never authoritative — Technical Proposal §02).
- */
-async function main(): Promise<void> {
-  const config = loadConfig();
-  const logger = createLogger(config).child({ host: "worker" });
-
-  const redis = createRedisConnection(config);
-  if (!redis) {
-    logger.warn(
-      "REDIS_URL not set — worker idle. Coordination wiring lands with Phase 3+.",
-    );
-  } else {
-    logger.info("worker online; no queues registered in MVP-001 Phase 1");
+/** Postgres-authoritative continuity worker. No user data is logged. */
+import { runContinuityOnce } from "@yaoyao/application";
+import type { UserId } from "@yaoyao/domain";
+import { createLogger, createPgPool, loadConfig, PostgresTransactionManager } from "@yaoyao/infrastructure";
+async function main():Promise<void> {
+  const config=loadConfig();
+  const logger=createLogger(config).child({host:"worker"});
+  if(!config.DATABASE_URL) throw new Error("DATABASE_URL is required for the continuity worker");
+  const pool=createPgPool({connectionString:config.DATABASE_URL});
+  const manager=new PostgresTransactionManager(pool);
+  let stopping=false;
+  let wake:(()=>void)|undefined;
+  const stop=()=>{stopping=true;wake?.();};
+  process.on("SIGTERM",stop); process.on("SIGINT",stop);
+  logger.info({ownerCount:config.CONTINUITY_USER_IDS.length},"continuity worker started");
+  try {
+    while(!stopping) {
+      for(const owner of config.CONTINUITY_USER_IDS) {
+        if(stopping) break;
+        try {
+          const outcome=await runContinuityOnce(manager,owner as UserId);
+          if(outcome!=="idle") logger.info({outcome},"continuity pass finished");
+        } catch { logger.error("continuity pass failed; retrying on next poll"); }
+      }
+      if(!stopping) await new Promise<void>(resolve=>{
+        const timer=setTimeout(()=>{wake=undefined;resolve();},config.CONTINUITY_POLL_MS);
+        wake=()=>{clearTimeout(timer);wake=undefined;resolve();};
+      });
+    }
+  } finally {
+    await pool.end();
+    process.off("SIGTERM",stop);process.off("SIGINT",stop);
+    logger.info("continuity worker stopped");
   }
-
-  // Keep the event loop alive until a shutdown signal arrives.
-  // (A never-resolving promise alone does not prevent Node from exiting
-  // when no handles are pending.)
-  const keepAlive = setInterval(() => undefined, 30_000);
-
-  let shuttingDown = false;
-  const shutdown = async (signal: string): Promise<void> => {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    clearInterval(keepAlive);
-    logger.info({ signal }, "worker shutting down");
-    if (redis) {
-      await redis.quit().catch(() => undefined);
-    }
-    process.exit(0);
-  };
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-
-  // Real queue processors attach in later phases; the host simply idles here.
-  await new Promise<void>(() => undefined);
 }
-
-main().catch((err: unknown) => {
-  console.error("Worker bootstrap failed:", err);
-  process.exit(1);
-});
+main().catch(()=>{console.error("Continuity worker failed to start");process.exitCode=1;});

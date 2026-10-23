@@ -17,6 +17,9 @@ const EnvSchema = z.object({
   // [Phase 3] PostgreSQL 16 + pgvector — the only system of record.
   DATABASE_URL: z.string().url().optional(),
 
+  CONTINUITY_USER_IDS: z.string().default("").transform(value=>value.split(",").map(s=>s.trim()).filter(Boolean))
+    .pipe(z.array(z.string().uuid()).max(100)),
+  CONTINUITY_POLL_MS: z.coerce.number().int().min(100).max(60000).default(2000),
   // Redis — idempotency cache, short distributed locks, BullMQ coordination.
   // Disposable/rebuildable; never the sole record of a Core fact.
   REDIS_URL: z.string().url().optional(),

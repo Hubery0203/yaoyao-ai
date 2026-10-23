@@ -372,25 +372,23 @@ describe.skipIf(!HAS_DOCKER)("MVP-002G: End-to-End Conversation (PostgreSQL)", (
 
   it("G33: crash after Tx2 commit → retry returns stored response (no LLM re-run)", async () => {
     const { userId, yaoyaoId, orchestrator } = await setupTurn(db, "已提交的回复。");
-    // Simulate: Tx2 committed, then process crashed before HTTP flush.
-    // (Pre-seed the ASSISTANT_MESSAGE directly.)
-    await db.manager.runAsUser(userId, (tx) =>
-      persistAssistantMessage(tx, {
-        userId,
-        yaoyaoId,
-        sessionId: null,
-        text: "已提交的回复。",
-        requestId: "g33-req",
-        traceId: "g33-seed",
-      }),
-    );
-    // Also seed the USER_MESSAGE so the turn looks complete.
+    // Seed Tx1 before Tx2, matching the real transaction ordering.
     await db.manager.runAsUser(userId, (tx) =>
       persistUserMessage(tx, {
         userId,
         yaoyaoId,
         sessionId: null,
         text: "崩溃前的消息",
+        requestId: "g33-req",
+        traceId: "g33-seed",
+      }),
+    );
+    await db.manager.runAsUser(userId, (tx) =>
+      persistAssistantMessage(tx, {
+        userId,
+        yaoyaoId,
+        sessionId: null,
+        text: "已提交的回复。",
         requestId: "g33-req",
         traceId: "g33-seed",
       }),

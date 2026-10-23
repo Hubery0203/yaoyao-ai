@@ -20,6 +20,7 @@ export async function persistUserMessage(
   tx: PersistenceTransaction,
   input: PersistMessageInput,
 ): Promise<{ eventId: string; duplicate: boolean }> {
+  await tx.continuity.lockTurn(input.userId, input.yaoyaoId, input.requestId);
   // Idempotency: check for an existing USER_MESSAGE with this requestId.
   const existing = await tx.events.readOwnedAfter(
     input.userId,
@@ -57,6 +58,14 @@ export async function persistAssistantMessage(
   tx: PersistenceTransaction,
   input: PersistMessageInput,
 ): Promise<{ eventId: string }> {
+  await tx.continuity.lockTurn(input.userId, input.yaoyaoId, input.requestId);
+  const events = await tx.events.readOwnedAfter(input.userId, input.yaoyaoId, 0);
+  const existing = events.find(({ event }) => event.type === "ASSISTANT_MESSAGE" && event.correlationId === input.requestId);
+  if (existing) {
+    const eventId = String(existing.event.eventId);
+    await tx.continuity.enqueue({ ...input, assistantEventId: eventId });
+    return { eventId };
+  }
   const event = DomainEvent.create({
     type: "ASSISTANT_MESSAGE",
     actor: "YAOYAO",
@@ -68,7 +77,9 @@ export async function persistAssistantMessage(
     correlationId: input.requestId,
   });
   const persisted = await tx.events.append({ event });
-  return { eventId: String(persisted.event.eventId) };
+  const eventId = String(persisted.event.eventId);
+  await tx.continuity.enqueue({ ...input, assistantEventId: eventId });
+  return { eventId };
 }
 
 /**

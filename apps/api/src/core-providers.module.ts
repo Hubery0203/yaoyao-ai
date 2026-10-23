@@ -1,3 +1,5 @@
+import { TransactionalTemporalEmotionWriter } from "./temporal-emotion.adapter.js";
+import { TEMPORAL_EMOTION_WRITER, type TemporalEmotionWriter } from "@yaoyao/application";
 import { Global, Inject, Module, type OnModuleDestroy } from "@nestjs/common";
 import {
   AUTH_CREDENTIALS,
@@ -87,6 +89,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
 @Global()
 @Module({
   providers: [
+    { provide:TEMPORAL_EMOTION_WRITER, useClass:TransactionalTemporalEmotionWriter },
     {
       provide: APP_CONFIG,
       useFactory: (): AppConfig => loadConfig(),
@@ -184,6 +187,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
         EMOTION_INTERPRETER,
         EMOTION_STATE_WRITER,
         CONVERSATION_EVENTS,
+        TEMPORAL_EMOTION_WRITER,
       ],
       useFactory: (
         router: AIRouter,
@@ -192,6 +196,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
         emotionInterpreter: EmotionInterpreter,
         emotionWriter: EmotionStateWriter,
         conversationEvents: ConversationEventPort,
+        temporalEmotion: TemporalEmotionWriter,
       ) =>
         new ConversationOrchestrator({
           router,
@@ -200,6 +205,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
           emotionInterpreter,
           emotionWriter,
           conversationEvents,
+          temporalEmotion,
         }),
     },
   ],

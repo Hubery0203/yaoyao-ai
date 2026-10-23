@@ -108,3 +108,6 @@ export {
   MEMORY_STATUSES,
 } from "./memory/memory.js";
 export type { MemoryType, MemoryStatus } from "./memory/memory.js";
+
+export * from "./memory/engine.js";
+export * from "./state/evolution.js";

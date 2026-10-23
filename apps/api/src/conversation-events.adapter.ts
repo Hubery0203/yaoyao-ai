@@ -6,7 +6,7 @@
  * Each method is its own transaction (the Tx1/Tx2 design):
  *   Tx1: persistUserMessage (+ Step 8 STATE_CHANGED in the orchestrator's
  *        emotion writer, same turn)
- *   Tx2: persistAssistantMessage (after response delivery)
+ *   Tx2: persistAssistantMessage + continuity job (before HTTP response)
  */
 import {
   CONVERSATION_EVENTS,

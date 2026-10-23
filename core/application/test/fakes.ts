@@ -86,6 +86,15 @@ export function fakeTransaction(
       find: notImplemented("idempotency.find"),
       ...overrides.idempotency,
     },
+    continuityProcessing: {lockEntity:async()=>undefined,...overrides.continuityProcessing} as never,
+    continuity: {
+      lockTurn: notImplemented("continuity.lockTurn"),
+      enqueue: notImplemented("continuity.enqueue"),
+      claimNext: notImplemented("continuity.claimNext"),
+      complete: notImplemented("continuity.complete"),
+      sweepExpiredLeases: notImplemented("continuity.sweepExpiredLeases"),
+      ...overrides.continuity,
+    },
     outbox: {
       enqueueForEvent: notImplemented("outbox.enqueueForEvent"),
       findPending: notImplemented("outbox.findPending"),

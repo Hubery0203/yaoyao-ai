@@ -64,8 +64,13 @@ services:
     env_file:
       - ../.env
     environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-yaoyao}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-yaoyao}
+      CONTINUITY_USER_IDS: ${CONTINUITY_USER_IDS:-}
+      CONTINUITY_POLL_MS: ${CONTINUITY_POLL_MS:-2000}
       REDIS_URL: redis://redis:6379
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     networks:

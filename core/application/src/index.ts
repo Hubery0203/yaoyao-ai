@@ -13,6 +13,11 @@ export * from "./ports/memory-retrieval.js";
 export * from "./ports/emotion.js";
 export * from "./ports/decision.js";
 export * from "./ports/conversation.js";
+export * from "./ports/continuity.js";
+export * from "./ports/continuity-processing.js";
+export * from "./ports/temporal-emotion.js";
+export * from "./usecases/continuity.js";
+export * from "./usecases/temporal-emotion.js";
 export {
   initializeYaoYao,
   type InitializeYaoYaoInput,
@@ -63,3 +68,4 @@ export {
   loadConversationHistory,
   findCompletedTurn,
 } from "./usecases/conversation.js";
+export * from "./usecases/memory-review.js";

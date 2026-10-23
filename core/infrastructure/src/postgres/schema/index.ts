@@ -2,6 +2,8 @@
  * Postgres schema barrel — the single schema object Drizzle binds to.
  */
 export * from "./custom.js";
+export * from "./continuity.js";
+import { continuityJobs,continuityRuns,memoryCandidateAudits,memorySlots,memoryCandidateResolutions } from "./continuity.js";
 export * from "./identity.js";
 export * from "./state.js";
 export * from "./memory.js";
@@ -28,6 +30,8 @@ export const schema = {
   idempotencyRecords,
   outbox,
   schemaMigrations,
+  continuityJobs,
+  continuityRuns,memoryCandidateAudits,memorySlots,memoryCandidateResolutions,
 };
 
 export type Schema = typeof schema;

@@ -42,6 +42,7 @@ export async function applyEmotionProposal(
     return { outcome: "no-change" };
   }
 
+  await tx.continuityProcessing.lockEntity(input.userId,input.yaoyaoId);
   // 1. Load current state (fresh read inside the transaction).
   const current = await tx.states.findOwned(input.userId);
 
