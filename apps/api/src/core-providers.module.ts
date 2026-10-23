@@ -28,6 +28,7 @@ import {
   PostgresMemoryRetrievalAdapter,
   PostgresTransactionManager,
   createPgPool,
+  createLogger,
   loadConfig,
   schema,
   tokenServiceOptionsFromConfig,
@@ -90,6 +91,10 @@ const PG_POOL = "YAOYAO_PG_POOL";
 @Global()
 @Module({
   providers: [
+    {provide:"CONVERSATION_QUALITY",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>{
+      const logger=createLogger(config).child({component:"conversation-quality"});
+      return {record:(quality:object)=>logger.info({event:"conversation_quality",quality},"Conversation generation quality")};
+    }},
     LiteRuntimeService,
     {provide:"CONVERSATION_GATE",useExisting:LiteRuntimeService},
     {provide:"YAOYAO_CONNECTION_INFO",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>({
@@ -217,6 +222,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
   ],
   exports: [
     "CONVERSATION_GATE",
+    "CONVERSATION_QUALITY",
     "YAOYAO_CONNECTION_INFO",
     TRANSACTION_MANAGER,
     PASSWORD_HASHER,

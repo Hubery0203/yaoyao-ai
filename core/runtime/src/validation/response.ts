@@ -1,3 +1,4 @@
+import {normalizedConversationText,explicitlyRequestsRepetition} from "../conversation/continuity.js";
 /**
  * Response Validation — MVP-002F.
  *
@@ -267,7 +268,29 @@ function checkContinuity(
       return { ok: false, reason: "continuity: repetitive content" };
     }
   }
-  void recentConversation;
+  if(!explicitlyRequestsRepetition(userInput)) {
+    const history=recentConversation.slice(-6);
+    const normalized=normalizedConversationText(trimmed);
+    for(let i=0;i<history.length;i++) {
+      if(!history[i].startsWith("YaoYao: "))continue;
+      const previous=history[i].slice(8);
+      if(normalized.length>=12&&normalized===normalizedConversationText(previous))return {ok:false,reason:"continuity: repeated previous assistant response"};
+      // Only unambiguous short-answer forms qualify; this is a conservative
+      // lexical check, not a semantic judgment that any later text answered it.
+      const next=history[i+1];
+      const answers=next?.startsWith("User: ")?[next.slice(6)]:i===history.length-1?[userInput]:[];
+      for(const question of previous.match(/[^。！？!?\n]+[？?]/gu)??[]) {
+        const answered=answers.some(answer=>{
+          const text=answer.trim().replace(/[。！!\s]+$/u,"");
+          if(/^(热的|冰的|冷的|温的)$/u.test(text))return /热|冰|冷|温/u.test(question);
+          if(/^(是的|不是|好的|可以|不用|不需要|有|没有)$/u.test(text))return /吗|是不是|有没有|要不要|能不能|可不可以/u.test(question);
+          return /^[0-9]{1,3}(点|个|岁)?$/u.test(text)&&/几|多少/u.test(question);
+        });
+        const q=normalizedConversationText(question);
+        if(answered&&q.length>=6&&(trimmed.match(/[^。！？!?\n]+[？?]/gu)??[]).some(part=>normalizedConversationText(part)===q))return {ok:false,reason:"continuity: repeated answered question"};
+      }
+    }
+  }
   return { ok: true, reason: "" };
 }
 

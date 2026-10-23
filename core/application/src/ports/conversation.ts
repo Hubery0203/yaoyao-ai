@@ -55,6 +55,7 @@ export interface ConversationEventPort {
     userId: UserId;
     yaoyaoId: YaoYaoId;
     limit: number;
+    excludeRequestId?: string;
   }): Promise<ReadonlyArray<ConversationTurn>>;
 
   /**

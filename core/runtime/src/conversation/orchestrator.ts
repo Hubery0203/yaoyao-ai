@@ -52,6 +52,8 @@ import {
 import { AIRouter } from "../router/router.js";
 import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
+import {renderConversationContinuity} from "./continuity.js";
+import {validationFailureSummary} from "./quality.js";
 import { classifySituation } from "./situation.js";
 
 export interface OrchestratorDeps {
@@ -204,6 +206,7 @@ export class ConversationOrchestrator {
           userId: input.userId as never,
           yaoyaoId: yaoyaoId as never,
           limit: 20,
+          excludeRequestId: requestId,
         })
       : [];
     const recentConversationTexts = conversationHistory.map(
@@ -293,6 +296,7 @@ export class ConversationOrchestrator {
       systemContext: [
         assembled.promptContext.systemPrompt,
         renderDecisionGuidance(decision),
+        renderConversationContinuity(input.text,recentConversationTexts.slice(-6)),
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInput: input.text,
@@ -327,7 +331,9 @@ export class ConversationOrchestrator {
       userInput: input.text,
       recentConversation: recentConversationTexts.slice(-6),
     });
+    const failures=validationOutcome.passed?[]:[validationFailureSummary(validationOutcome)];
     let repairAttempts = 0;
+    let repairProviderFallback=false;
     let fallbackUsed = false;
     const MAX_REPAIR_ATTEMPTS = 1;
 
@@ -348,12 +354,14 @@ export class ConversationOrchestrator {
         },
       };
       const repaired = await invoker.invoke(repairRequest);
+      repairProviderFallback ||= repaired.telemetry.fallbackUsed;
       validationOutcome = validateResponse({
         proposal: repaired.proposal,
         decision,
         userInput: input.text,
         recentConversation: recentConversationTexts.slice(-6),
       });
+      if(!validationOutcome.passed)failures.push(validationFailureSummary(validationOutcome));
     }
 
     let finalResponse: string;
@@ -377,6 +385,8 @@ export class ConversationOrchestrator {
         : `${validationOutcome.stage}: ${validationOutcome.reason}`,
       validationLatencyMs: Date.now() - validationStart,
       repairAttempts,
+      failures,
+      providerFallbackUsed:telemetry.fallbackUsed||repairProviderFallback,
       fallbackUsed,
       finalResponseAccepted: true,
     };

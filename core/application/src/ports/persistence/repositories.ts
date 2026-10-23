@@ -141,7 +141,7 @@ export interface AppendEventInput {
 export interface EventStore {
   /** Bounded owner-scoped queries; optional for legacy in-memory adapters. */
   readWindow?(userId: UserId, yaoyaoId: YaoYaoId, query: {
-    limit: number; offset?: number; types?: readonly string[]; requestId?: string;
+    limit: number; offset?: number; types?: readonly string[]; requestId?: string; excludeRequestId?: string;
     eventId?: string; emotionOnly?: boolean; policy?: string; count?: boolean; oldestFirst?: boolean;
   }): Promise<{ events: PersistedEvent[]; total: number }>;
 

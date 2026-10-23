@@ -116,11 +116,13 @@ export async function loadConversationHistory(
     userId: Parameters<PersistenceTransaction["states"]["findOwned"]>[0];
     yaoyaoId: Parameters<PersistenceTransaction["events"]["readOwnedAfter"]>[1];
     limit: number;
+    excludeRequestId?: string;
   },
 ): Promise<ReadonlyArray<ConversationTurn>> {
-  const events = tx.events.readWindow?(await tx.events.readWindow(input.userId,input.yaoyaoId,{types:["USER_MESSAGE","ASSISTANT_MESSAGE"],limit:input.limit})).events:await tx.events.readOwnedAfter(input.userId,input.yaoyaoId,0);
+  const events = tx.events.readWindow?(await tx.events.readWindow(input.userId,input.yaoyaoId,{types:["USER_MESSAGE","ASSISTANT_MESSAGE"],limit:input.limit,excludeRequestId:input.excludeRequestId})).events:await tx.events.readOwnedAfter(input.userId,input.yaoyaoId,0);
   const turns: ConversationTurn[] = [];
   for (const { event, aggregateSeq } of events) {
+    if(input.excludeRequestId!==undefined&&event.correlationId===input.excludeRequestId)continue;
     if (
       event.type !== "USER_MESSAGE" &&
       event.type !== "ASSISTANT_MESSAGE"
