@@ -10,6 +10,12 @@ later milestones built on this foundation.
 
 Engineering priority: Identity > Relationship > State > Memory > Event > Runtime > LLM > UI.
 
+## Local text web client (MVP-004 v1)
+
+Run `npm run web` after starting the configured API. Open http://127.0.0.1:4173
+for login, chat, persisted history, memory review and connection preferences.
+See [MVP-004 setup and scope](docs/MVP-004-TEXT-WEB.md).
+
 ## Governing contracts (frozen — do not reinterpret in code)
 
 1. `YaoYao_AI_PRD_0.1_Frozen`
@@ -31,6 +37,7 @@ systems. The database is the persistence layer, not the business-rule authority.
 yaoyao-ai/
 ├── apps/
 │   ├── api/            # NestJS HTTP host — bootstrap only, no business rules
+│   ├── web/            # local text UI and same-origin loopback proxy
 │   └── worker/         # owner-scoped Postgres continuity worker
 ├── core/
 │   ├── domain/         # aggregates, value objects, invariants — stdlib ONLY

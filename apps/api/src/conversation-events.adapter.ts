@@ -60,6 +60,7 @@ export class TransactionalConversationEvents implements ConversationEventPort {
     userId: PersistMessageInput["userId"];
     yaoyaoId: PersistMessageInput["yaoyaoId"];
     requestId: string;
+    text?:string;
   }): Promise<string | null> {
     return this.transactions.runAsUser(input.userId, (tx) =>
       findCompletedTurn(tx, input),

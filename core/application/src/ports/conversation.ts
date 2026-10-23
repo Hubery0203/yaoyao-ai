@@ -44,6 +44,7 @@ export interface ConversationEventPort {
    */
   persistAssistantMessage(input: PersistMessageInput): Promise<{
     eventId: string;
+    response?: string;
   }>;
 
   /**
@@ -64,6 +65,7 @@ export interface ConversationEventPort {
     userId: UserId;
     yaoyaoId: YaoYaoId;
     requestId: string;
+    text?: string;
   }): Promise<string | null>;
 }
 
