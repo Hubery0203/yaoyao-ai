@@ -22,6 +22,8 @@ import type {
   YaoYaoAggregateRepository,
 } from "./repositories.js";
 
+import type { ContinuityJobStore } from "../continuity.js";
+
 /** All repositories bound to a single transaction handle. */
 export interface PersistenceTransaction {
   users: UserRepository;
@@ -35,6 +37,7 @@ export interface PersistenceTransaction {
   refreshSessions: RefreshSessionRepository;
   idempotency: IdempotencyStore;
   outbox: OutboxStore;
+  continuity: ContinuityJobStore;
 }
 
 export interface TransactionManager {

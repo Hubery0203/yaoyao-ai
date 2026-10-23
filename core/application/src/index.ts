@@ -13,6 +13,7 @@ export * from "./ports/memory-retrieval.js";
 export * from "./ports/emotion.js";
 export * from "./ports/decision.js";
 export * from "./ports/conversation.js";
+export * from "./ports/continuity.js";
 export {
   initializeYaoYao,
   type InitializeYaoYaoInput,
