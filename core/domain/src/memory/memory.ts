@@ -230,6 +230,7 @@ export class Memory {
    * (emitted by the application layer in Phase 5+).
    */
   correct(input: {
+    type?: MemoryType;
     content: string;
     importance?: number;
     confidence?: number;
@@ -245,13 +246,14 @@ export class Memory {
     const confidence = input.confidence ?? this.confidence;
     assertUnitInterval(importance, "importance");
     assertUnitInterval(confidence, "confidence");
+    if(input.type!==undefined && !MEMORY_TYPES.includes(input.type)) throw new DomainValidationError("unknown correction memory type");
     const superseded = this.transition("CORRECTED", () => ({}));
     const current = new Memory(
       newMemoryId(),
       this.containerId,
       this.userId,
       this.yaoyaoId,
-      this.type,
+      input.type ?? this.type,
       input.content,
       importance,
       confidence,

@@ -14,6 +14,7 @@ function fakeTx(initial: CoreState, opts: { casStale?: boolean } = {}) {
   const appended: unknown[] = [];
   return {
     appended,
+    continuityProcessing:{lockEntity:async()=>undefined},
     states: {
       findOwned: async () => initial,
       saveStateIfVersionMatches: async (

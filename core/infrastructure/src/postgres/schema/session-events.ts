@@ -108,7 +108,7 @@ export const events = pgTable(
     check("events_seq_min", sql`${t.aggregateSeq} >= 1`),
     check(
       "events_type_allowed",
-      sql`${t.type} IN ('USER_CREATED','YAOYAO_CREATED','RELATIONSHIP_CREATED','STATE_CREATED','SESSION_STARTED','SESSION_ENDED','STATE_CHANGED','MEMORY_CORRECTED')`,
+      sql`${t.type} IN ('USER_CREATED','YAOYAO_CREATED','RELATIONSHIP_CREATED','STATE_CREATED','SESSION_STARTED','SESSION_ENDED','STATE_CHANGED','MEMORY_CORRECTED','MEMORY_CONSOLIDATED')`,
     ),
     check(
       "events_actor_allowed",

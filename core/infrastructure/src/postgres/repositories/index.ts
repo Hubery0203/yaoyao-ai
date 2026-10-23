@@ -6,6 +6,7 @@ import type {
   PersistenceTransaction,
   TransactionManager,
 } from "@yaoyao/application";
+import { PostgresContinuityProcessingStore } from "./continuity-processing.js";
 import { PostgresContinuityJobStore } from "./continuity.js";
 import type { Db } from "../db.js";
 import { PostgresIdempotencyStore } from "./idempotency.js";
@@ -45,6 +46,7 @@ export function createRepositories(db: Db): PersistenceTransaction {
     idempotency: new PostgresIdempotencyStore(db),
     outbox: new PostgresOutboxStore(db),
     continuity: new PostgresContinuityJobStore(db),
+    continuityProcessing: new PostgresContinuityProcessingStore(db),
   };
 }
 

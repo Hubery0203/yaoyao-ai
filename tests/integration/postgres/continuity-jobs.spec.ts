@@ -51,6 +51,7 @@ describe.skipIf(!HAS_DOCKER)("reconstructed 003A continuity durability", () => {
     await db.adminPool.query("UPDATE continuity_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE job_id=$1", [first.jobId]);
     expect(await restarted.runAsUser(input.userId, tx => tx.continuity.complete(input.userId, first.jobId, first.leaseToken))).toBe(false);
     expect(await restarted.runAsUser(input.userId, tx => tx.continuity.sweepExpiredLeases(input.userId))).toBe(1);
+    await db.adminPool.query("UPDATE continuity_jobs SET available_at=clock_timestamp()-interval '1 second' WHERE job_id=$1", [first.jobId]);
     const second = await restarted.runAsUser(input.userId, tx => tx.continuity.claimNext(input.userId, 60));
     expect(second?.attempts).toBe(2);
     expect(second?.leaseToken).not.toBe(first.leaseToken);

@@ -3,7 +3,7 @@
  */
 export * from "./custom.js";
 export * from "./continuity.js";
-import { continuityJobs } from "./continuity.js";
+import { continuityJobs,continuityRuns,memoryCandidateAudits,memorySlots,memoryCandidateResolutions } from "./continuity.js";
 export * from "./identity.js";
 export * from "./state.js";
 export * from "./memory.js";
@@ -31,6 +31,7 @@ export const schema = {
   outbox,
   schemaMigrations,
   continuityJobs,
+  continuityRuns,memoryCandidateAudits,memorySlots,memoryCandidateResolutions,
 };
 
 export type Schema = typeof schema;

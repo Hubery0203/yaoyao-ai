@@ -35,16 +35,16 @@ export class PostgresContinuityJobStore implements ContinuityJobStore {
     }
     const result = await this.db.execute(sql`
       WITH candidate AS (
-        SELECT job_id FROM continuity_jobs WHERE user_id=${userId}::uuid AND status='pending'
+        SELECT job_id FROM continuity_jobs WHERE user_id=${userId}::uuid AND status='pending' AND attempts<5 AND available_at<=clock_timestamp()
         ORDER BY created_at,job_id FOR UPDATE SKIP LOCKED LIMIT 1
       )
       UPDATE continuity_jobs j SET status='claimed', attempts=attempts+1,
         lease_token=${uuidv7()}::uuid, lease_expires_at=clock_timestamp()+${leaseSeconds}*interval '1 second'
       FROM candidate c WHERE j.job_id=c.job_id
-      RETURNING j.job_id,j.request_id,j.assistant_event_id,j.attempts,j.lease_token,j.lease_expires_at`);
+      RETURNING j.job_id,j.yaoyao_id,j.request_id,j.assistant_event_id,j.attempts,j.lease_token,j.lease_expires_at`);
     const row = result.rows[0];
     return row ? {
-      jobId: String(row.job_id), requestId: String(row.request_id),
+      jobId: String(row.job_id), yaoyaoId: String(row.yaoyao_id) as YaoYaoId, requestId: String(row.request_id),
       assistantEventId: String(row.assistant_event_id), attempts: Number(row.attempts),
       leaseToken: String(row.lease_token), leaseExpiresAt: new Date(String(row.lease_expires_at)),
     } : null;
@@ -62,7 +62,9 @@ export class PostgresContinuityJobStore implements ContinuityJobStore {
 
   async sweepExpiredLeases(userId: UserId): Promise<number> {
     const result = await this.db.execute(sql`
-      UPDATE continuity_jobs SET status='pending',lease_token=NULL,lease_expires_at=NULL
+      UPDATE continuity_jobs SET status=CASE WHEN attempts>=5 THEN 'failed' ELSE 'pending' END,
+        available_at=clock_timestamp()+LEAST(300,POWER(2,LEAST(attempts,8))) * interval '1 second',
+        lease_token=NULL,lease_expires_at=NULL
       WHERE user_id=${userId}::uuid AND status='claimed' AND lease_expires_at<=clock_timestamp()
       RETURNING job_id`);
     return result.rows.length;

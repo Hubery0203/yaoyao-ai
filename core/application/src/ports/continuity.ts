@@ -5,6 +5,7 @@
 import type { UserId, YaoYaoId } from "@yaoyao/domain";
 export interface ContinuityJob {
   jobId: string;
+  yaoyaoId: YaoYaoId;
   requestId: string;
   assistantEventId: string;
   attempts: number;

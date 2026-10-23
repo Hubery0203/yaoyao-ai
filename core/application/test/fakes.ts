@@ -86,6 +86,7 @@ export function fakeTransaction(
       find: notImplemented("idempotency.find"),
       ...overrides.idempotency,
     },
+    continuityProcessing: {lockEntity:async()=>undefined,...overrides.continuityProcessing} as never,
     continuity: {
       lockTurn: notImplemented("continuity.lockTurn"),
       enqueue: notImplemented("continuity.enqueue"),
