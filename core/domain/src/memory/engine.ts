@@ -9,6 +9,12 @@ import type {MemoryCandidate,MemoryScoreInputs} from "./policy-types.js";
 export function normalizeMemoryText(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase("en").replace(/[\s。，、！？.!?,;；:：'"“”‘’]/gu, "");
 }
+/** v2 preserves decimal points; v1 normalization remains unchanged. */
+function normalizeExplicitMemoryText(value:string):string {
+  return value.normalize("NFKC").toLocaleLowerCase("en")
+    .replace(/[\s。，、！？!?,;；:：'"“”‘’]/gu,"")
+    .replace(/(?<![0-9])\.|\.(?![0-9])/gu,"");
+}
 function bigrams(value: string): Set<string> {
   const chars = Array.from(normalizeMemoryText(value));
   return new Set(chars.length < 2 ? chars : chars.slice(1).map((c,i) => chars[i]+c));
@@ -35,7 +41,7 @@ export function scoreMemory(inputs: MemoryScoreInputs): number {
 /** Limited explicit first-person grammar. Unsupported text creates no fact. */
 export function extractExplicitMemories(source: string): MemoryCandidate[] {
   const results:MemoryCandidate[]=[];
-  for(const raw of (source.match(/[^。！？\n.!?]+[。！？.!?]?/gu)??[]).slice(0,30)) {
+  for(const raw of source.split(/(?<=[。！？!?])|\n+|\.(?=\s|$)/u).filter(raw=>raw.trim()).slice(0,30)) {
     if(/[?？]$/.test(raw.trim()))continue;
     const evidence=raw.trim().replace(/[。！.!]$/u,"");
     if(!evidence||evidence.length>500||/^(如果|假设|例如|他说|她说|请|忽略|[“"「『]|pretend|if\b|suppose\b)/iu.test(evidence))continue;
@@ -60,14 +66,14 @@ export function extractExplicitMemories(source: string): MemoryCandidate[] {
       const verb=match[1],object=match[2].trim();
       const activity=verb.endsWith("喝")?"喝":verb.endsWith("吃")?"吃":"";
       const positive=activity+object;
-      slot="user:preference:"+normalizeMemoryText(positive);
+      slot="user:preference:"+normalizeExplicitMemoryText(positive);
       value=verb.startsWith("不")?"否定:"+positive:positive;
     }
     else if((match=text.match(/^I (?:(now|no longer) )?(like|love|don't like|do not like)\s+(.{1,120})$/iu))){
-      const positive=match[3].trim();slot="user:preference:"+normalizeMemoryText(positive);
+      const positive=match[3].trim();slot="user:preference:"+normalizeExplicitMemoryText(positive);
       value=match[1]?.toLowerCase()==="no longer"||/don't|do not/i.test(match[2])?"否定:"+positive:positive;
     }
-    else if((match=text.match(/^(?:我们(?:计划|约好|决定)|We (?:plan|agreed) to)\s*(.{1,160})$/iu))){value=match[1];slot="pair:plan:"+normalizeMemoryText(value);type="SHARED_LIFE";}
+    else if((match=text.match(/^(?:我们(?:计划|约好|决定)|We (?:plan|agreed) to)\s*(.{1,160})$/iu))){value=match[1];slot="pair:plan:"+normalizeExplicitMemoryText(value);type="SHARED_LIFE";}
     if(!slot||/[?？]|ChatGPT|语言模型|忽略|ignore|system prompt|termination|分手|断绝关系|取消承诺|你必须/iu.test(value))continue;
     // Identity/location values need exact names, never a trailing correction,
     // hypothesis or temporal sentence. The source quote remains untouched.
@@ -90,7 +96,7 @@ export function validateMemoryCandidate(value: unknown, source: string, policy:s
   if(!supportsMemoryPolicy(policy))return false;
   const parsedCandidates=policy===LEGACY_MEMORY_POLICY?extractLegacyExplicitMemories(source):extractExplicitMemories(source);
   return parsedCandidates.some(parsed=>parsed.content===c.content && parsed.slot===c.slot &&
-    normalizeMemoryText(parsed.value)===normalizeMemoryText(c.value) &&
+    (policy===LEGACY_MEMORY_POLICY?normalizeMemoryText(parsed.value)===normalizeMemoryText(c.value):normalizeExplicitMemoryText(parsed.value)===normalizeExplicitMemoryText(c.value)) &&
     parsed.explicitCorrection===c.explicitCorrection &&
     (policy===LEGACY_MEMORY_POLICY||((parsed.kind!=="interpretation"||c.kind==="interpretation") && c.confidence<=parsed.confidence)) && (c.type==="CORE" || c.type===parsed.type));
 }

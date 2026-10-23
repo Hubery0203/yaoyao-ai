@@ -3,6 +3,8 @@ import {extractExplicitMemories,validateMemoryCandidate,decideMemory,MEMORY_POLI
 const inputs={importance:.7,relevance:.65,confidence:.9,novelty:1,recurrence:0};
 describe('005B explicit memory grammar',()=>{
  it.each([
+  ['我喜欢7.5分甜的咖啡。','user:preference:7.5分甜的咖啡','7.5分甜的咖啡'],
+  ['我喜欢Node.js。','user:preference:nodejs','Node.js'],
   ['我最近更喜欢喝燕麦拿铁了。','user:preference:喝燕麦拿铁','喝燕麦拿铁'],
   ['我特别喜欢阅读。','user:preference:阅读','阅读'],
   ['我不喜欢太甜的。','user:preference:太甜的','否定:太甜的'],
@@ -40,6 +42,12 @@ describe('005B explicit memory grammar',()=>{
   expect(validateMemoryCandidate(v1,source,LEGACY_MEMORY_POLICY)).toBe(true);
   expect(validateMemoryCandidate(v1,source,MEMORY_POLICY)).toBe(false);
   expect(validateMemoryCandidate(v1,source,'unknown')).toBe(false);
+ });
+ it('keeps decimals distinct and never truncates dotted names into a different fact',()=>{
+  const source='我喜欢7.5分甜的咖啡。',c=extractExplicitMemories(source)[0];
+  expect(c.slot).not.toBe(extractExplicitMemories('我喜欢75分甜的咖啡。')[0].slot);
+  expect(validateMemoryCandidate({...c,value:'75分甜的咖啡'},source)).toBe(false);
+  expect(extractExplicitMemories('My name is St.John.')).toHaveLength(0);
  });
  it('rejects polarity, slot and evidence smuggling',()=>{
   const source='我不喜欢咖啡。',c=extractExplicitMemories(source)[0];
