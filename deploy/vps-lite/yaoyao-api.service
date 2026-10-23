@@ -1,0 +1,32 @@
+[Unit]
+Description=YAOYAO API and continuity scheduler
+After=network-online.target docker.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+[Service]
+Type=simple
+User=yaoyao
+Group=yaoyao
+WorkingDirectory=/opt/yaoyao-ai/current
+EnvironmentFile=/opt/yaoyao-ai/private/api.env
+ExecStart=/opt/yaoyao-ai/current/bin/node --max-old-space-size=64 apps/api/dist/main.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=150
+KillSignal=SIGTERM
+Slice=yaoyao.slice
+MemoryMax=192M
+MemorySwapMax=128M
+CPUWeight=25
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=yaoyao-api
+[Install]
+WantedBy=multi-user.target

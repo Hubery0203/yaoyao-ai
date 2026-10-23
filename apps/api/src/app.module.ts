@@ -32,16 +32,19 @@ import { CoreProvidersModule } from "./core-providers.module.js";
       },
       {
         name: "login",
+        skipIf: context => { const request=context.switchToHttp().getRequest<{method:string;path:string}>(); return request.method!=="POST"||request.path!=="/api/v1/auth/login"; },
         ttl: 60_000,
         limit: 5,
       },
       {
         name: "register",
+        skipIf: context => { const request=context.switchToHttp().getRequest<{method:string;path:string}>(); return request.method!=="POST"||request.path!=="/api/v1/users"; },
         ttl: 3_600_000,
         limit: 10,
       },
       {
         name: "refresh",
+        skipIf: context => { const request=context.switchToHttp().getRequest<{method:string;path:string}>(); return request.method!=="POST"||request.path!=="/api/v1/auth/refresh"; },
         ttl: 60_000,
         limit: 30,
       },

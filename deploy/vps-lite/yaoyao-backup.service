@@ -1,0 +1,9 @@
+[Unit]
+Description=Private YAOYAO database backup
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/yaoyao-ai/private/backup.sh
+Nice=15
+IOSchedulingClass=idle
+UMask=0077
