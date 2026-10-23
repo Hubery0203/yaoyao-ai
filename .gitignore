@@ -25,3 +25,6 @@ coverage/
 
 # local data volumes
 deploy/data/
+
+# private local runtime (database, credentials, process logs)
+.local/

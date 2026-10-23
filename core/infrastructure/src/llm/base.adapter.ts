@@ -67,7 +67,9 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
     const timeoutMs = request.timeoutMs || this.defaultTimeoutMs;
     const systemPrompt = [
       request.systemContext,
-      STRUCTURED_OUTPUT_INSTRUCTION,
+      request.outputSchemaName === EMOTION_PROPOSAL_SCHEMA_NAME
+        ? "Return ONLY the emotion proposal JSON object specified above (primary, secondary, intensity, signals, confidence, optional cause). Do not wrap it in a conversation response object."
+        : STRUCTURED_OUTPUT_INSTRUCTION,
     ].join("\n\n");
     const userPrompt = [
       request.conversationContext,
@@ -80,6 +82,8 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
       const completion = await this.client.chat.completions.create(
         {
           model: this.modelId,
+          // Keep bounded conversational JSON requests in non-thinking mode.
+          ...(this.providerId === "deepseek" ? { thinking: { type: "disabled" } } : {}),
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
