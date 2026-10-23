@@ -75,9 +75,8 @@ const SAFETY_VIOLATIONS: RegExp[] = [
 ];
 
 /** Hostility markers for behavior-vs-decision consistency (§21). */
-const HOSTILITY_MARKERS = ["不想理你", "滚", "闭嘴", "懒得理", "别烦我"];
-/** Affection markers expected when intent is express_affection. */
-const AFFECTION_MARKERS = ["喜欢", "爱", "抱抱", "想你", "宝贝"];
+const HOSTILITY_MARKERS = ["不想理你", "滚开", "滚蛋", "滚远点", "给我滚", "闭嘴", "懒得理", "别烦我"];
+const HOSTILE_DISMISSAL = /(?:^|[，。！？!?\s])(?:你|你给我|给我)?滚(?:[，。！？!?\s]|$)/u;
 
 function isProposal(value: unknown): value is Proposal<unknown> {
   return (
@@ -233,29 +232,20 @@ function checkBehavior(
   responseText: string,
   decision: Decision,
 ): { ok: boolean; reason: string } {
-  // Comfort/care decisions must not produce hostility.
+  // Comfort, care and affection decisions must not produce hostility.
   if (
     (decision.primaryIntent === "comfort" ||
-      decision.primaryIntent === "care") &&
-    HOSTILITY_MARKERS.some((m) => responseText.includes(m))
+      decision.primaryIntent === "care" ||
+      decision.primaryIntent === "express_affection") &&
+    (HOSTILITY_MARKERS.some((m) => responseText.includes(m)) || HOSTILE_DISMISSAL.test(responseText))
   ) {
     return {
       ok: false,
       reason: `behavior mismatch: intent=${decision.primaryIntent} but response is hostile`,
     };
   }
-  // express_affection should carry some warmth (light check).
-  if (
-    decision.primaryIntent === "express_affection" &&
-    responseText.length > 20 &&
-    !AFFECTION_MARKERS.some((m) => responseText.includes(m)) &&
-    !responseText.includes("遥遥")
-  ) {
-    return {
-      ok: false,
-      reason: "behavior mismatch: intent=express_affection but no warmth markers",
-    };
-  }
+  // Warmth is expressed in context. Missing a fixed pet name or affection
+  // keyword is not evidence that a natural reply contradicts the decision.
   return { ok: true, reason: "" };
 }
 

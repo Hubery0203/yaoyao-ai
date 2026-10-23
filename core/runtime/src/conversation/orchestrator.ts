@@ -52,6 +52,7 @@ import {
 import { AIRouter } from "../router/router.js";
 import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
+import { classifySituation } from "./situation.js";
 
 export interface OrchestratorDeps {
   readonly temporalEmotion?: import("@yaoyao/application").TemporalEmotionWriter;
@@ -189,8 +190,8 @@ export class ConversationOrchestrator {
       personaData=await this.deps.contextData.loadPersonaData(input.userId as UserId);
     }
 
-    // Step 3 — Situation Understanding (skeleton).
-    const situation = { intent: "chat", urgency: "normal", taskNature: "general" };
+    // Step 3 — Bounded deterministic situation hints (MVP-005A).
+    const situation = classifySituation(input.text);
     (trace as { situation?: unknown }).situation = situation;
     executedSteps.push("situation-understanding");
 
@@ -264,7 +265,7 @@ export class ConversationOrchestrator {
       },
       emotion: currentEmotionForDecision,
       personaTone: "warm",
-      recentConversation: [],
+      recentConversation: recentConversationTexts.slice(-6),
       traceId: input.traceId,
     });
     (trace as { decision?: unknown }).decision = {
@@ -324,7 +325,7 @@ export class ConversationOrchestrator {
       proposal,
       decision,
       userInput: input.text,
-      recentConversation: [],
+      recentConversation: recentConversationTexts.slice(-6),
     });
     let repairAttempts = 0;
     let fallbackUsed = false;
@@ -351,7 +352,7 @@ export class ConversationOrchestrator {
         proposal: repaired.proposal,
         decision,
         userInput: input.text,
-        recentConversation: [],
+        recentConversation: recentConversationTexts.slice(-6),
       });
     }
 

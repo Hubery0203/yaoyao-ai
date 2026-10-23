@@ -34,8 +34,15 @@ import {
   type TopicContinuity,
 } from "@yaoyao/application";
 
-/** Affection markers in user input (Chinese). */
-const AFFECTION_MARKERS = ["喜欢", "爱", "想你", "宝贝", "亲亲", "抱抱", "么么"];
+/** Object preferences do not by themselves address affection to YaoYao. */
+function hasDirectedAffection(text:string):boolean {
+  return text.split(/[，,。！？!?；;\n]/u).some(clause=>{
+    if (/(?:不(?:是|再)?|没(?:有)?|别)(?:太|很|再|那么|怎么)?(?:喜欢|爱|想你|抱|亲)/u.test(clause)) return false;
+    return /(?:喜欢|爱|想)(?:你|遥遥|知遥|沈知遥)(?:了|呀|啊|呢|哦|嘛|哟|$)/u.test(clause)
+      || /^(?:遥遥|知遥|沈知遥|宝贝)?[\s，,]*(?:我想要|我想|想要|想|给我|来个|要个)?(?:抱抱|亲亲|么么)(?:你|我|呀|啊|嘛|吧|了|$)/u.test(clause.trim())
+      || /^(?:宝贝|亲爱的)$/u.test(clause.trim());
+  });
+}
 /** Distress markers in user input (Chinese). */
 const DISTRESS_MARKERS = ["害怕", "担心", "难过", "哭", "出事", "怎么办", "救命", "疼", "痛"];
 /** Conflict markers in user input (Chinese). */
@@ -110,6 +117,15 @@ export function baselineDecision(input: DecisionInput): Decision {
     topicContinuity = "continue";
     selfExpression = "moderate";
   }
+  // An explicit question keeps its task even when affection/hurt is elevated.
+  // A current relationship conflict above still takes priority.
+  else if (intent === "question" || text.includes("?") || text.includes("？")) {
+    primaryIntent = "answer";
+    secondaryIntents = affection >= 0.75 ? ["express_affection"] : [];
+    conversationMode = sadness >= 0.5 ? "comforting" : "normal";
+    emotionalExpression = "low";
+    selfExpression = "low";
+  }
   // Rule 3 — High hurt alone → express_hurt (with affection if coexisting).
   else if (hurt >= 0.6) {
     primaryIntent = "express_hurt";
@@ -132,7 +148,7 @@ export function baselineDecision(input: DecisionInput): Decision {
     selfExpression = "moderate";
   }
   // Rule 5 — Affectionate input → express_affection.
-  else if (containsAny(text, AFFECTION_MARKERS) || affection >= 0.75) {
+  else if (hasDirectedAffection(text)) {
     primaryIntent = "express_affection";
     secondaryIntents = [];
     conversationMode = "intimate";
@@ -141,16 +157,6 @@ export function baselineDecision(input: DecisionInput): Decision {
     followUp = "optional";
     topicContinuity = "continue";
     selfExpression = "moderate";
-  }
-  // Rule 6 — Clear question → answer.
-  else if (intent === "question" || text.includes("?") || text.includes("？")) {
-    primaryIntent = "answer";
-    conversationMode = sadness >= 0.5 ? "comforting" : "normal";
-    emotionalExpression = "low";
-    initiative = "moderate";
-    followUp = "optional";
-    topicContinuity = "continue";
-    selfExpression = "low";
   }
   // Rule 7 — Jealousy present → acknowledge with care (never control).
   else if (jealousy >= 0.5) {
@@ -166,6 +172,7 @@ export function baselineDecision(input: DecisionInput): Decision {
   // Rule 8 — Casual continuation → continue_topic.
   else {
     primaryIntent = "continue_topic";
+    secondaryIntents = affection >= 0.75 ? ["express_affection"] : [];
     conversationMode = "normal";
     emotionalExpression = "low";
     initiative = "moderate";
