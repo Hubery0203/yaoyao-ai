@@ -144,6 +144,7 @@ export class ConversationOrchestrator {
         userId: input.userId as never,
         yaoyaoId: yaoyaoId as never,
         requestId,
+        text:input.text,
       });
       if (replay !== null) {
         (trace as { eventCreation?: unknown }).eventCreation = {
@@ -473,7 +474,7 @@ export class ConversationOrchestrator {
 
     // Step 9 — Response Delivery: the ONLY legal release site.
     // finalResponse is either the validated LLM output or the safe fallback.
-    const response = finalResponse;
+    let response = finalResponse;
     executedSteps.push("response-delivery");
 
     // Step 10 — Event Recording (REAL in MVP-002G).
@@ -503,6 +504,7 @@ export class ConversationOrchestrator {
         requestId,
         traceId: input.traceId,
       });
+      response=persisted.response??response;
       (trace as { eventRecording?: unknown }).eventRecording = {
         status: "persisted",
         assistantMessageEventId: persisted.eventId,

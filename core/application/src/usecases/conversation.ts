@@ -4,6 +4,7 @@
  * Pure application logic; runs inside the caller's transaction.
  * The apps/api adapter wraps each in TransactionManager.runAsUser.
  */
+import { IdempotencyKeyReusedError } from "../ports/persistence/errors.js";
 import { DomainEvent } from "@yaoyao/domain";
 import type { PersistenceTransaction } from "../ports/persistence/index.js";
 import type {
@@ -33,6 +34,7 @@ export async function persistUserMessage(
       e.event.correlationId === input.requestId,
   );
   if (dup) {
+    if(dup.event.payload.text!==input.text) throw new IdempotencyKeyReusedError("conversation");
     return { eventId: String(dup.event.eventId), duplicate: true };
   }
 
@@ -57,14 +59,14 @@ export async function persistUserMessage(
 export async function persistAssistantMessage(
   tx: PersistenceTransaction,
   input: PersistMessageInput,
-): Promise<{ eventId: string }> {
+): Promise<{ eventId: string; response?: string }> {
   await tx.continuity.lockTurn(input.userId, input.yaoyaoId, input.requestId);
   const events = await tx.events.readOwnedAfter(input.userId, input.yaoyaoId, 0);
   const existing = events.find(({ event }) => event.type === "ASSISTANT_MESSAGE" && event.correlationId === input.requestId);
   if (existing) {
     const eventId = String(existing.event.eventId);
     await tx.continuity.enqueue({ ...input, assistantEventId: eventId });
-    return { eventId };
+    return { eventId, response:String(existing.event.payload.text) };
   }
   const event = DomainEvent.create({
     type: "ASSISTANT_MESSAGE",
@@ -79,7 +81,7 @@ export async function persistAssistantMessage(
   const persisted = await tx.events.append({ event });
   const eventId = String(persisted.event.eventId);
   await tx.continuity.enqueue({ ...input, assistantEventId: eventId });
-  return { eventId };
+  return { eventId, response:input.text };
 }
 
 /**
@@ -93,6 +95,7 @@ export async function findCompletedTurn(
     userId: Parameters<PersistenceTransaction["states"]["findOwned"]>[0];
     yaoyaoId: Parameters<PersistenceTransaction["events"]["readOwnedAfter"]>[1];
     requestId: string;
+    text?: string;
   },
 ): Promise<string | null> {
   const events = await tx.events.readOwnedAfter(
@@ -106,6 +109,7 @@ export async function findCompletedTurn(
       e.event.correlationId === input.requestId,
   );
   if (!found) return null;
+  if(input.text!==undefined && events.find(e=>e.event.type==="USER_MESSAGE" && e.event.correlationId===input.requestId)?.event.payload.text!==input.text) throw new IdempotencyKeyReusedError("conversation");
   const payload = found.event.payload as { text?: unknown };
   return typeof payload.text === "string" ? payload.text : null;
 }

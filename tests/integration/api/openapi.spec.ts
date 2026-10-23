@@ -10,6 +10,8 @@ import { buildOpenApiDocument } from "../../../apps/api/src/app.setup.js";
 import { dockerAvailable, setupApi, type ApiTestContext } from "./helpers.js";
 
 const EXPECTED_ROUTES: Array<{ method: string; path: string }> = [
+  {method:"get",path:"/api/v1/conversations/messages"},
+  {method:"get",path:"/api/v1/conversations/connection"},
   { method: "post", path: "/api/v1/auth/login" },
   { method: "post", path: "/api/v1/auth/refresh" },
   { method: "post", path: "/api/v1/auth/logout" },

@@ -89,6 +89,9 @@ const PG_POOL = "YAOYAO_PG_POOL";
 @Global()
 @Module({
   providers: [
+    {provide:"YAOYAO_CONNECTION_INFO",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>({
+      provider:config.LLM_L2_PROVIDER,model:config.LLM_L2_PROVIDER==="deepseek"?config.DEEPSEEK_MODEL:
+        config.LLM_L2_PROVIDER==="openai"?config.OPENAI_MODEL:"mock"})},
     { provide:TEMPORAL_EMOTION_WRITER, useClass:TransactionalTemporalEmotionWriter },
     {
       provide: APP_CONFIG,
@@ -210,6 +213,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     },
   ],
   exports: [
+    "YAOYAO_CONNECTION_INFO",
     TRANSACTION_MANAGER,
     PASSWORD_HASHER,
     TOKEN_SERVICE,

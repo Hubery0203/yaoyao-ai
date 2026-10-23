@@ -13,7 +13,7 @@ async function bootstrap(): Promise<void> {
   });
   applyAppDefaults(app);
 
-  await app.listen(config.PORT);
+  await app.listen(config.PORT, config.HOST);
   logger.info({ port: config.PORT }, "yaoyao-ai api listening");
 }
 
