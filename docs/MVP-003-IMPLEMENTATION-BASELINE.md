@@ -52,7 +52,11 @@ and value / 3). Stored score input snapshots enable pure deterministic
 re-evaluation; historical replay never calls extraction or writes anything.
 Retrieval-time signals remain independent of consolidation scoring.
 
-Facts require confidence >= .8 and exact grounded text. CORE candidates
+Fact summaries are explicitly attributed to the user, preventing first-person
+user evidence from being mistaken for YaoYao biography. Existing CORE memory
+replacements are also held for owner review even when a non-CORE proposal
+claims an explicit correction. Facts require confidence >= .8 and exact
+grounded text. CORE candidates
 are held awaiting explicit owner confirmation; interpretation candidates
 are held as interpretation and never silently promoted to facts. Slot
 correction requires the new user statement to explicitly signal a change;

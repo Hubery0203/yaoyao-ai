@@ -35,21 +35,25 @@ export async function processContinuityJob(tx:PersistenceTransaction,userId:User
       novelty:lexicalNovelty(candidate.content,all.map(m=>m.content)),recurrence:Math.min(1,support/3)};
     let decision=decideMemory({candidate,source,inputs,previousValue:previous?.value,
       existingExact:!!previous && normalizeMemoryText(previous.value)===normalizeMemoryText(candidate.value)});
+    if(previous && decision.outcome==="consolidated" && (await tx.memories.findOwned(userId,previous.memoryId)).type==="CORE") {
+      decision={...decision,outcome:"held",reason:"awaiting_core_confirmation"};
+    }
     if(previous && previous.sourceSequence>user.aggregateSeq && decision.outcome==="consolidated") {
       decision={...decision,outcome:"held",reason:"older_than_current_memory"};
     }
     let memoryId=decision.outcome==="duplicate"?previous!.memoryId:null;
     if(decision.outcome==="consolidated") {
+      const memoryContent="用户陈述："+candidate.content;
       const sources=[user.event.eventId as EventId];
       let memory:Memory;
       if(previous) {
         const old=await tx.memories.findOwned(userId,previous.memoryId);
-        const correction=old.correct({content:candidate.content,importance:candidate.importance,confidence:candidate.confidence,sourceEvents:sources});
+        const correction=old.correct({content:memoryContent,importance:candidate.importance,confidence:candidate.confidence,sourceEvents:sources});
         await tx.memories.save(userId,correction.superseded);
         memory=correction.current;
       } else {
         memory=Memory.candidate({containerId:container.containerId,userId,yaoyaoId:job.yaoyaoId,
-          type:candidate.type,content:candidate.content,importance:candidate.importance,confidence:candidate.confidence,sourceEvents:sources}).validate().consolidate();
+          type:candidate.type,content:memoryContent,importance:candidate.importance,confidence:candidate.confidence,sourceEvents:sources}).validate().consolidate();
       }
       await tx.memories.insert(memory);
       memoryId=memory.memoryId;

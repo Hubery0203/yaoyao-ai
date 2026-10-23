@@ -31,13 +31,13 @@ describe.skipIf(!HAS_DOCKER)("MVP-003 memory/emotion/continuity acceptance",()=>
     const o=await owner();await turn(o,"我住在杭州。","a");
     expect(await runContinuityOnce(db.manager,o.userId)).toBe("completed");
     const rows=await memories(o.userId);
-    expect(rows).toHaveLength(1);expect(rows[0].content).toBe("我住在杭州");
+    expect(rows).toHaveLength(1);expect(rows[0].content).toBe("用户陈述：我住在杭州");
     expect(rows[0].sourceEvents).toHaveLength(1);
     const audits=await db.manager.runAsUser(o.userId,tx=>tx.continuityProcessing.listAudits(o.userId,10));
     const audit=audits[0].audit as {inputs:Parameters<typeof scoreMemory>[0];score:number};
     expect(scoreMemory(audit.inputs)).toBe(audit.score);
     const state=await db.manager.runAsUser(o.userId,tx=>tx.states.findOwned(o.userId));
-    expect(state.internalState.recentReflection).toBe("我住在杭州");
+    expect(state.internalState.recentReflection).toBe("用户陈述：我住在杭州");
     const read=new PostgresMemoryRetrievalAdapter(db.appPool);
     const selected=await read.retrieve({userId:o.userId,yaoyaoId:o.yaoyaoId,currentInput:"我住在杭州",situation:{intent:"chat",urgency:"normal",taskNature:"general"},relationshipContext:{type:"deep_partner",status:"active"},limit:5,recentConversation:[],traceId:"retrieve"});
     expect(JSON.stringify(selected)).toContain("杭州");
@@ -108,6 +108,9 @@ describe.skipIf(!HAS_DOCKER)("MVP-003 memory/emotion/continuity acceptance",()=>
     expect(await memories(o.userId)).toHaveLength(0);
     await db.manager.runAsUser(o.userId,tx=>resolveMemoryCandidate(tx,o.userId,job.jobId,0,"confirm"));
     expect((await memories(o.userId))[0].type).toBe("CORE");
+    await turn(o,"我现在叫Eve。","protected-core");
+    expect(await runContinuityOnce(db.manager,o.userId)).toBe("completed");
+    expect(await memories(o.userId)).toHaveLength(1);
     await turn(o,"我叫Bob。","b");const second=await claim(o.userId);
     const result=await db.manager.runAsUser(o.userId,tx=>processContinuityJob(tx,o.userId,second,[candidate]));
     expect(result.discarded).toBe(1);expect(await memories(o.userId)).toHaveLength(1);

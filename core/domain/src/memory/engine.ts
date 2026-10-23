@@ -65,7 +65,8 @@ export function extractExplicitMemories(source: string): MemoryCandidate[] {
     } else if ((match=text.match(/^(?:我们(?:计划|约好|决定)|We (?:plan|agreed) to)\s*(.{1,160})$/iu))) {
       value=match[1]; slot="pair:plan:"+normalizeMemoryText(value); type="SHARED_LIFE";
     }
-    if (!slot || /[?？]|ChatGPT|语言模型|忽略|system prompt|termination|分手|断绝关系|取消承诺/iu.test(value)) continue;
+    if (!slot || /[?？]|ChatGPT|语言模型|忽略|ignore|system prompt|termination|分手|断绝关系|取消承诺|你必须/iu.test(value)) continue;
+    if ((slot==="user:name" || slot==="user:location") && !/^[\p{L}\p{N}\s·-]+$/u.test(value)) continue;
     results.push({content:text,evidence:text,slot,value:value.trim(),type,kind:"fact",confidence:.9,
       importance:type==="SHARED_LIFE"?.85:.7,relevance:type==="SHARED_LIFE"?1:.65,explicitCorrection:change});
   }

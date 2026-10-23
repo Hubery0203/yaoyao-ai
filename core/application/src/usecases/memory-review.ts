@@ -27,12 +27,12 @@ export async function resolveMemoryCandidate(tx:PersistenceTransaction,userId:Us
     let memory:Memory;
     if(previous) {
       const old=await tx.memories.findOwned(userId,previous.memoryId);
-      const correction=old.correct({type:candidate.type,content:candidate.content,confidence:1,importance:candidate.importance,sourceEvents:[user.event.eventId]});
+      const correction=old.correct({type:candidate.type,content:"用户陈述："+candidate.content,confidence:1,importance:candidate.importance,sourceEvents:[user.event.eventId]});
       memory=correction.current;
       await tx.memories.save(userId,correction.superseded);
     } else {
       memory=Memory.candidate({containerId:container.containerId,userId,yaoyaoId:row.yaoyaoId,type:candidate.type,
-        content:candidate.content,confidence:1,importance:candidate.importance,sourceEvents:[user.event.eventId]}).validate().consolidate();
+        content:"用户陈述："+candidate.content,confidence:1,importance:candidate.importance,sourceEvents:[user.event.eventId]}).validate().consolidate();
     }
     await tx.memories.insert(memory);
     const confirmation=await tx.events.append({event:DomainEvent.create({type:previous?"MEMORY_CORRECTED":"MEMORY_CONSOLIDATED",actor:"USER",source:"CORE",
@@ -50,6 +50,7 @@ export async function replayMemoryEvaluation(tx:PersistenceTransaction,userId:Us
   const row=await tx.continuityProcessing.readAudit(userId,jobId,ordinal);
   if(!row) throw new EntityNotFoundError("MemoryCandidate");
   if(row.audit.policy!==MEMORY_POLICY) throw new DomainValidationError("Unsupported memory policy version");
+  if(row.audit.reason==="invalid_or_ungrounded") return {policy:row.audit.policy,outcome:"not_scored",reason:row.audit.reason};
   const score=scoreMemory(row.audit.inputs);
   return {policy:row.audit.policy,recordedScore:row.audit.score,recomputedScore:score,matches:score===row.audit.score};
 }
