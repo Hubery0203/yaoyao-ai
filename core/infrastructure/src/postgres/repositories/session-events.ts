@@ -25,7 +25,7 @@ import {
   type UserId,
   type YaoYaoId,
 } from "@yaoyao/domain";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import type { Db } from "../db.js";
 import { isUniqueViolation, mapPgError } from "../errors.js";
 import { eventSeqLockKey } from "../locks.js";
@@ -145,6 +145,22 @@ export class PostgresEventStore implements EventStore {
       )
       .orderBy(asc(events.aggregateSeq));
     return rows.map(fromEventRow);
+  }
+
+  async readWindow(userId: UserId, yaoyaoId: YaoYaoId, query: {
+    limit:number;offset?:number;types?:readonly string[];requestId?:string;eventId?:string;emotionOnly?:boolean;policy?:string;count?:boolean;oldestFirst?:boolean;
+  }):Promise<{events:PersistedEvent[];total:number}> {
+    const filters=[eq(events.userId,userId as string),eq(events.yaoyaoId,yaoyaoId as string)];
+    if(query.types?.length) filters.push(sql`${events.type} = ANY(ARRAY[${sql.join(query.types.map(t=>sql`${t}`),sql`, `)}]::text[])`);
+    if(query.requestId!==undefined) filters.push(eq(events.correlationId,query.requestId));
+    if(query.eventId!==undefined) filters.push(eq(events.eventId,query.eventId));
+    if(query.emotionOnly) filters.push(sql`(${events.type}='STATE_CREATED' OR (${events.type}='STATE_CHANGED' AND ${events.payload}->'changes' ? 'emotion'))`);
+    if(query.policy!==undefined) filters.push(sql`${events.payload}->>'policy'=${query.policy}`);
+    const where=and(...filters);
+    const rows=await this.db.select().from(events).where(where).orderBy(query.oldestFirst?asc(events.aggregateSeq):desc(events.aggregateSeq))
+      .limit(Math.max(1,Math.min(200,query.limit))).offset(Math.max(0,query.offset??0));
+    const total=query.count?Number((await this.db.select({n:sql<string>`count(*)`}).from(events).where(where))[0]?.n??0):rows.length;
+    return {events:(query.oldestFirst?rows:rows.reverse()).map(fromEventRow),total};
   }
 
   async readSession(

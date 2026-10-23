@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Inject, Post, Req, Get, Query, Headers, BadRequestException } from "@nestjs/common";
+import { Body, Controller, HttpCode, Inject, Post, Req, Get, Query, Headers, BadRequestException, Optional, HttpException } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { z } from "zod";
@@ -21,6 +21,7 @@ export class ConversationsController {
     @Inject("YAOYAO_CONNECTION_INFO") private readonly connectionInfo:{provider:string;model:string},
     @Inject(CONVERSATION_ORCHESTRATOR)
     private readonly orchestrator: ConversationOrchestrator,
+    @Optional() @Inject("CONVERSATION_GATE") private readonly gate?:{acquire():boolean;release():void},
   ) {}
 
   @Get("connection")
@@ -32,12 +33,13 @@ export class ConversationsController {
     const {userId}=requirePrincipal(request);
     return this.transactions.runAsUser(userId,async tx=>{
       const aggregate=await tx.aggregates.loadOwned(userId);
-      const events=await tx.events.readOwnedAfter(userId,aggregate.yaoyaoId,0);
+      const page=tx.events.readWindow?await tx.events.readWindow(userId,aggregate.yaoyaoId,{types:["USER_MESSAGE","ASSISTANT_MESSAGE"],limit:query.limit,offset:query.offset,count:true}):null;
+      const events=page?.events??await tx.events.readOwnedAfter(userId,aggregate.yaoyaoId,0);
       const messages=events.filter(({event})=>["USER_MESSAGE","ASSISTANT_MESSAGE"].includes(event.type))
         .map(({event,aggregateSeq})=>({id:String(event.eventId),role:event.type==="USER_MESSAGE"?"user":"assistant",
           requestId:event.correlationId,text:typeof event.payload.text==="string"?event.payload.text:"",occurredAt:event.occurredAt.toISOString(),sequence:aggregateSeq}));
       const end=Math.max(0,messages.length-query.offset);
-      return {data:{messages:messages.slice(Math.max(0,end-query.limit),end),total:messages.length,offset:query.offset,limit:query.limit}};
+      return {data:{messages:page?messages:messages.slice(Math.max(0,end-query.limit),end),total:page?.total??messages.length,offset:query.offset,limit:query.limit}};
     });
   }
 
@@ -51,6 +53,8 @@ export class ConversationsController {
   ): Promise<{ response: string }> {
     const { userId } = requirePrincipal(request);
     if(requestId!==undefined && (typeof requestId!=="string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(requestId))) throw new BadRequestException("Invalid Idempotency-Key");
+    if(this.gate&&!this.gate.acquire())throw new HttpException({error:{code:"SERVER_BUSY",message:"服务繁忙，请稍后重试。"}},429);
+    try {
     const { response } = await this.orchestrator.converse({
       userId,
       text: body.text,
@@ -58,5 +62,6 @@ export class ConversationsController {
       requestId,
     });
     return { response };
+    }finally{this.gate?.release();}
   }
 }

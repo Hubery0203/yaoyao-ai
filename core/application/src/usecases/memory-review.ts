@@ -18,7 +18,7 @@ export async function resolveMemoryCandidate(tx:PersistenceTransaction,userId:Us
   const result:Record<string,unknown>={decision,memoryId:null};
   if(decision==="confirm") {
     const candidate=row.audit.candidate;
-    const events=await tx.events.readOwnedAfter(userId,row.yaoyaoId,0);
+    const events=tx.events.readWindow?(await tx.events.readWindow(userId,row.yaoyaoId,{eventId:row.audit.sourceEventId,limit:1})).events:await tx.events.readOwnedAfter(userId,row.yaoyaoId,0);
     const user=events.find(e=>String(e.event.eventId)===row!.audit.sourceEventId && e.event.type==="USER_MESSAGE" &&
       typeof e.event.payload.text==="string" && validateMemoryCandidate(candidate,e.event.payload.text));
     if(!user) throw new DomainValidationError("Candidate evidence is unavailable");

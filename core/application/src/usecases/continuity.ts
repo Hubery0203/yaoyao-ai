@@ -16,7 +16,7 @@ export async function processContinuityJob(tx:PersistenceTransaction,userId:User
   await store.lockEntity(userId,job.yaoyaoId);
   const recorded=await store.readRun(userId,job.jobId);
   if(recorded) throw new Error("Job has already committed a run");
-  const events=await tx.events.readOwnedAfter(userId,job.yaoyaoId,0);
+  const events=tx.events.readWindow?(await tx.events.readWindow(userId,job.yaoyaoId,{requestId:job.requestId,types:["USER_MESSAGE","ASSISTANT_MESSAGE"],limit:2})).events:await tx.events.readOwnedAfter(userId,job.yaoyaoId,0);
   const assistant=events.find(e=>String(e.event.eventId)===job.assistantEventId && e.event.type==="ASSISTANT_MESSAGE" && e.event.correlationId===job.requestId);
   const user=events.find(e=>e.event.type==="USER_MESSAGE" && e.event.correlationId===job.requestId);
   if(!assistant || !user || typeof user.event.payload.text!=="string") throw new Error("Incomplete continuity turn");
@@ -24,7 +24,7 @@ export async function processContinuityJob(tx:PersistenceTransaction,userId:User
   const candidates=proposed??extractExplicitMemories(source);
   if(candidates.length>10) throw new Error("Too many candidates");
   const container=await tx.memoryContainers.findOwned(userId);
-  const all=await tx.memories.listOwned(userId,{status:"CONSOLIDATED"});
+  const all=await tx.memories.listOwned(userId,{status:"CONSOLIDATED",limit:200});
   const result:ContinuityResult={policy:MEMORY_POLICY,memoriesCreated:0,held:0,duplicates:0,discarded:0};
   const accepted:string[]=[];
   for(let ordinal=0;ordinal<candidates.length;ordinal++) {

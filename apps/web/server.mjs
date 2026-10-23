@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const root=fileURLToPath(new URL('.',import.meta.url));
-export function webServer({apiUrl='http://127.0.0.1:3000'}={}){
+export function webServer({apiUrl='http://127.0.0.1:3000',apiHostAllowlist=[]}={}){
  const target=new URL(apiUrl);
- if(!['http:','https:'].includes(target.protocol)||!['localhost','127.0.0.1','[::1]'].includes(target.hostname))throw new Error('API target must be a local HTTP service');
+ if(!['http:','https:'].includes(target.protocol)||!['localhost','127.0.0.1','[::1]',...apiHostAllowlist].includes(target.hostname))throw new Error('API target must be a local HTTP service or an explicitly allowed host');
  return createServer(async(req,res)=>{
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
@@ -18,7 +18,7 @@ export function webServer({apiUrl='http://127.0.0.1:3000'}={}){
     const headers={'Content-Type':'application/json'};for(const key of ['authorization','idempotency-key'])if(req.headers[key])headers[key]=req.headers[key];
     const upstream=await fetch(url,{method:req.method,headers,redirect:'error',signal:AbortSignal.timeout(125000),body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});
     res.writeHead(upstream.status,{'Content-Type':'application/json'});res.end(await upstream.text());
-   }catch{res.writeHead(503,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'本地后端未连接'}}));}return;
+   }catch{res.writeHead(503,{'Content-Type':'application/json'});res.end(JSON.stringify({error:{message:'后端未连接'}}));}return;
   }
   if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);res.end();return;}
   const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8']};
@@ -26,4 +26,10 @@ export function webServer({apiUrl='http://127.0.0.1:3000'}={}){
   try{const [file,type]=files[path];const data=await readFile(resolve(root,file));res.writeHead(200,{'Content-Type':type});res.end(req.method==='HEAD'?undefined:data);}catch{res.writeHead(500);res.end();}
  });
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){const port=Number(process.env.WEB_PORT||4173);const server=webServer({apiUrl:process.env.YAOYAO_API_URL});server.listen(port,'127.0.0.1',()=>console.log(`YAOYAO web: http://127.0.0.1:${port}`));process.on('SIGTERM',()=>server.close());process.on('SIGINT',()=>server.close());}
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
+ const port=Number(process.env.WEB_PORT||4173);const host=process.env.WEB_HOST||'127.0.0.1';
+ if(!['127.0.0.1','0.0.0.0','::1'].includes(host))throw new Error('Invalid WEB_HOST');
+ const server=webServer({apiUrl:process.env.YAOYAO_API_URL,apiHostAllowlist:(process.env.YAOYAO_API_HOST_ALLOWLIST||'').split(',').map(s=>s.trim()).filter(Boolean)});
+ server.listen(port,host,()=>console.log(`YAOYAO web listening on ${host}:${port}`));
+ process.on('SIGTERM',()=>server.close());process.on('SIGINT',()=>server.close());
+}

@@ -132,7 +132,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
 
   async listOwned(
     userId: UserId,
-    filter?: { type?: MemoryType; status?: MemoryStatus },
+    filter?: { type?: MemoryType; status?: MemoryStatus; limit?:number },
   ): Promise<Memory[]> {
     const conditions = [eq(memories.userId, userId as string)];
     if (filter?.type) conditions.push(eq(memories.type, filter.type));
@@ -141,7 +141,7 @@ export class PostgresMemoryRepository implements MemoryRepository {
       .select()
       .from(memories)
       .where(and(...conditions))
-      .orderBy(asc(memories.updatedAt));
+      .orderBy(asc(memories.updatedAt)).limit(filter?.limit??1000000);
     return rows.map(fromMemoryRow);
   }
 

@@ -81,10 +81,11 @@ export async function listEvents(
   // Resolve the YaoYao under the owner scope first (404 when none).
   const aggregate = await tx.aggregates.loadOwned(input.userId);
   const yaoyaoId: YaoYaoId = aggregate.yaoyaoId;
-  const all = await tx.events.readOwnedAfter(input.userId, yaoyaoId, 0);
+  const bounded=tx.events.readWindow?await tx.events.readWindow(input.userId,yaoyaoId,{limit,offset,count:true,oldestFirst:true}):null;
+  const all = bounded?.events??await tx.events.readOwnedAfter(input.userId, yaoyaoId, 0);
   return {
-    events: all.slice(offset, offset + limit),
-    total: all.length,
+    events: bounded?all:all.slice(offset, offset + limit),
+    total: bounded?.total??all.length,
     limit,
     offset,
   };

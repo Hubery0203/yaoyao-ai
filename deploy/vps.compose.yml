@@ -1,0 +1,71 @@
+name: yaoyao-vps
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg16
+    restart: unless-stopped
+    env_file: [./private/postgres.env]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [backend]
+    logging: &logs
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  migrate:
+    image: yaoyao-api:${YAOYAO_RELEASE:?set immutable release tag}
+    build: {context: .., dockerfile: deploy/api.Dockerfile}
+    env_file: [./private/migrate.env]
+    command: [node, deploy/migrate.mjs]
+    profiles: [tools]
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [backend]
+    logging: *logs
+  api:
+    image: yaoyao-api:${YAOYAO_RELEASE:?set immutable release tag}
+    build: {context: .., dockerfile: deploy/api.Dockerfile}
+    restart: unless-stopped
+    env_file: [./private/api.env]
+    environment: {NODE_ENV: production, HOST: 0.0.0.0, PORT: '3000'}
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, --input-type=module, -e, "const r=await fetch('http://127.0.0.1:3000/health/ready');const d=await r.json();process.exit(r.ok&&d.checks?.some(c=>c.name==='database'&&c.status==='ok')?0:1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    stop_grace_period: 45s
+    networks: [backend]
+    logging: *logs
+  worker:
+    image: yaoyao-worker:${YAOYAO_RELEASE:?set immutable release tag}
+    build: {context: .., dockerfile: deploy/worker.Dockerfile}
+    restart: unless-stopped
+    env_file: [./private/worker.env]
+    environment: {NODE_ENV: production}
+    depends_on:
+      api: {condition: service_healthy}
+    stop_grace_period: 45s
+    networks: [backend]
+    logging: *logs
+  web:
+    image: yaoyao-web:${YAOYAO_RELEASE:?set immutable release tag}
+    build: {context: .., dockerfile: deploy/web.Dockerfile}
+    restart: unless-stopped
+    environment:
+      YAOYAO_API_URL: http://api:3000
+      YAOYAO_API_HOST_ALLOWLIST: api
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: '4173'
+    ports: ['127.0.0.1:4174:4173']
+    depends_on:
+      api: {condition: service_healthy}
+    networks: [backend]
+    logging: *logs
+volumes:
+  pgdata:
+networks:
+  backend:

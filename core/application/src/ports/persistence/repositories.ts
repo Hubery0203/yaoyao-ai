@@ -139,6 +139,12 @@ export interface AppendEventInput {
 }
 
 export interface EventStore {
+  /** Bounded owner-scoped queries; optional for legacy in-memory adapters. */
+  readWindow?(userId: UserId, yaoyaoId: YaoYaoId, query: {
+    limit: number; offset?: number; types?: readonly string[]; requestId?: string;
+    eventId?: string; emotionOnly?: boolean; policy?: string; count?: boolean; oldestFirst?: boolean;
+  }): Promise<{ events: PersistedEvent[]; total: number }>;
+
   /**
    * Allocate the next per-YaoYao aggregate_seq under a transaction-scoped
    * advisory lock and insert the immutable event. Throws
@@ -189,7 +195,7 @@ export interface MemoryRepository {
   save(userId: UserId, memory: Memory): Promise<Memory>;
   listOwned(
     userId: UserId,
-    filter?: { type?: MemoryType; status?: MemoryStatus },
+    filter?: { type?: MemoryType; status?: MemoryStatus; limit?:number },
   ): Promise<Memory[]>;
 }
 

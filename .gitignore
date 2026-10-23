@@ -28,3 +28,7 @@ deploy/data/
 
 # private local runtime (database, credentials, process logs)
 .local/
+
+# VPS private environment and encrypted data transfer artifacts
+deploy/private/
+*.dump

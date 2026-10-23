@@ -30,6 +30,8 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/core ./core
+COPY --from=builder /app/db ./db
+COPY deploy/migrate.mjs ./deploy/migrate.mjs
 RUN chown -R yaoyao:yaoyao /app
 USER yaoyao
 EXPOSE 3000
