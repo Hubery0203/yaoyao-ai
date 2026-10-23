@@ -36,6 +36,12 @@ jobs:
       - run: npm run test:unit
       - run: npm run test:contract
       - run: npm run test:web
+      - run: node scripts/evaluate-quality.mjs --mode mock --out quality-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conversation-quality-report
+          path: quality-report.json
+          retention-days: 7
 
   integration:
     runs-on: ubuntu-latest

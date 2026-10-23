@@ -1,4 +1,4 @@
-import { DomainEvent, Memory, MEMORY_POLICY, scoreMemory, validateMemoryCandidate, type UserId } from "@yaoyao/domain";
+import { DomainEvent, Memory, supportsMemoryPolicy, scoreMemory, validateMemoryCandidate, type UserId } from "@yaoyao/domain";
 import { DomainValidationError } from "@yaoyao/domain";
 import { EntityNotFoundError } from "../ports/persistence/errors.js";
 import type { PersistenceTransaction } from "../ports/persistence/transactions.js";
@@ -20,7 +20,7 @@ export async function resolveMemoryCandidate(tx:PersistenceTransaction,userId:Us
     const candidate=row.audit.candidate;
     const events=tx.events.readWindow?(await tx.events.readWindow(userId,row.yaoyaoId,{eventId:row.audit.sourceEventId,limit:1})).events:await tx.events.readOwnedAfter(userId,row.yaoyaoId,0);
     const user=events.find(e=>String(e.event.eventId)===row!.audit.sourceEventId && e.event.type==="USER_MESSAGE" &&
-      typeof e.event.payload.text==="string" && validateMemoryCandidate(candidate,e.event.payload.text));
+      typeof e.event.payload.text==="string" && validateMemoryCandidate(candidate,e.event.payload.text,row!.audit.policy));
     if(!user) throw new DomainValidationError("Candidate evidence is unavailable");
     const container=await tx.memoryContainers.findOwned(userId);
     const previous=await store.findSlot(userId,row.yaoyaoId,candidate.slot);
@@ -49,7 +49,7 @@ export async function resolveMemoryCandidate(tx:PersistenceTransaction,userId:Us
 export async function replayMemoryEvaluation(tx:PersistenceTransaction,userId:UserId,jobId:string,ordinal:number):Promise<Record<string,unknown>> {
   const row=await tx.continuityProcessing.readAudit(userId,jobId,ordinal);
   if(!row) throw new EntityNotFoundError("MemoryCandidate");
-  if(row.audit.policy!==MEMORY_POLICY) throw new DomainValidationError("Unsupported memory policy version");
+  if(!supportsMemoryPolicy(row.audit.policy)) throw new DomainValidationError("Unsupported memory policy version");
   if(row.audit.reason==="invalid_or_ungrounded") return {policy:row.audit.policy,outcome:"not_scored",reason:row.audit.reason};
   const score=scoreMemory(row.audit.inputs);
   return {policy:row.audit.policy,recordedScore:row.audit.score,recomputedScore:score,matches:score===row.audit.score};

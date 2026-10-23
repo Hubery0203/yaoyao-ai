@@ -50,6 +50,7 @@ export class TransactionalConversationEvents implements ConversationEventPort {
     userId: PersistMessageInput["userId"];
     yaoyaoId: PersistMessageInput["yaoyaoId"];
     limit: number;
+    excludeRequestId?: string;
   }): Promise<ReadonlyArray<ConversationTurn>> {
     return this.transactions.runAsUser(input.userId, (tx) =>
       loadConversationHistory(tx, input),

@@ -148,11 +148,12 @@ export class PostgresEventStore implements EventStore {
   }
 
   async readWindow(userId: UserId, yaoyaoId: YaoYaoId, query: {
-    limit:number;offset?:number;types?:readonly string[];requestId?:string;eventId?:string;emotionOnly?:boolean;policy?:string;count?:boolean;oldestFirst?:boolean;
+    limit:number;offset?:number;types?:readonly string[];requestId?:string;excludeRequestId?:string;eventId?:string;emotionOnly?:boolean;policy?:string;count?:boolean;oldestFirst?:boolean;
   }):Promise<{events:PersistedEvent[];total:number}> {
     const filters=[eq(events.userId,userId as string),eq(events.yaoyaoId,yaoyaoId as string)];
     if(query.types?.length) filters.push(sql`${events.type} = ANY(ARRAY[${sql.join(query.types.map(t=>sql`${t}`),sql`, `)}]::text[])`);
     if(query.requestId!==undefined) filters.push(eq(events.correlationId,query.requestId));
+    if(query.excludeRequestId!==undefined) filters.push(sql`${events.correlationId} IS DISTINCT FROM ${query.excludeRequestId}`);
     if(query.eventId!==undefined) filters.push(eq(events.eventId,query.eventId));
     if(query.emotionOnly) filters.push(sql`(${events.type}='STATE_CREATED' OR (${events.type}='STATE_CHANGED' AND ${events.payload}->'changes' ? 'emotion'))`);
     if(query.policy!==undefined) filters.push(sql`${events.payload}->>'policy'=${query.policy}`);

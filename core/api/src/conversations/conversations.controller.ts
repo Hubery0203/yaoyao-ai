@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import {
   CONVERSATION_ORCHESTRATOR,
   ConversationOrchestrator,
+  summarizeTurnQuality,
 } from "@yaoyao/runtime";
 import { requirePrincipal } from "../auth/jwt-auth.guard.js";
 import { ZodValidationPipe } from "../common/zod-validation.pipe.js";
@@ -22,6 +23,7 @@ export class ConversationsController {
     @Inject(CONVERSATION_ORCHESTRATOR)
     private readonly orchestrator: ConversationOrchestrator,
     @Optional() @Inject("CONVERSATION_GATE") private readonly gate?:{acquire():boolean;release():void},
+    @Optional() @Inject("CONVERSATION_QUALITY") private readonly quality?:{record(entry:ReturnType<typeof summarizeTurnQuality>):void},
   ) {}
 
   @Get("connection")
@@ -55,12 +57,13 @@ export class ConversationsController {
     if(requestId!==undefined && (typeof requestId!=="string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(requestId))) throw new BadRequestException("Invalid Idempotency-Key");
     if(this.gate&&!this.gate.acquire())throw new HttpException({error:{code:"SERVER_BUSY",message:"服务繁忙，请稍后重试。"}},429);
     try {
-    const { response } = await this.orchestrator.converse({
+    const { response,trace } = await this.orchestrator.converse({
       userId,
       text: body.text,
       traceId: randomUUID(),
       requestId,
     });
+    try{this.quality?.record(summarizeTurnQuality(trace));}catch{/* Telemetry cannot turn a committed message into a failed send. */}
     return { response };
     }finally{this.gate?.release();}
   }
