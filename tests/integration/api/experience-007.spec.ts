@@ -101,6 +101,14 @@ describe.skipIf(!docker)('007 real inbox, outreach and owner isolation',()=>{
   await store.settings(owner.userId,settings());await expect(store.followup(owner.userId,'hello',new Date(Date.now()-1).toISOString())).rejects.toThrow('INVALID_FOLLOWUP');await expect(store.followup(owner.userId,'hello',new Date(Date.now()+31*86400000).toISOString())).rejects.toThrow('INVALID_FOLLOWUP');
   await store.followup(owner.userId,'hello',due());await activity();await store.scheduleOutreach(new Date(Date.now()+2*86400000));expect(await all()).toHaveLength(0);expect((await ctx.db.adminPool.query('SELECT stage FROM weixin_followups')).rows[0].stage).toBe('expired');
  });
+ it('does not report cancellation after a followup already entered sending',async()=>{
+  await store.settings(owner.userId,settings());await activity();const job=await store.followup(owner.userId,'面试怎么样？',due());await store.scheduleOutreach(new Date(Date.now()+2000));const row=(await store.next())!;expect(await store.beginSend(row.message_key)).toBe(true);
+  await expect(store.cancelFollowup(owner.userId,job.id)).rejects.toThrow('FOLLOWUP_ALREADY_SENDING');expect((await all())[0].stage).toBe('sending');
+ });
+ it('rechecks opt-out and configuration version at the final outbound boundary',async()=>{
+  await store.settings(owner.userId,{...settings(),greeting:true});await activity();await store.scheduleOutreach();const row=(await store.next())!;
+  await store.settings(owner.userId,{...settings(),enabled:false});expect(await store.beginSend(row.message_key)).toBe(false);expect((await all())[0].stage).toBe('skipped');
+ });
  it('forced RLS hides followups from unscoped and other-bot app queries',async()=>{
   await store.settings(owner.userId,settings());await store.followup(owner.userId,'hello',due());expect((await ctx.db.appPool.query('SELECT * FROM weixin_followups')).rows).toHaveLength(0);
   await store.tx(async db=>{await db.query("SELECT set_config('app.weixin_bot_id','other-bot',true)");expect((await db.query('SELECT * FROM weixin_followups')).rows).toHaveLength(0);});
