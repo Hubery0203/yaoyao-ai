@@ -3,10 +3,29 @@ import {asProposal,type RelevantMemoryContext} from '@yaoyao/application';
 import {EmotionVector} from '@yaoyao/domain';
 import {AIRouter,ConversationOrchestrator,baselineDecision,buildFallbackResponse,summarizeTurnQuality} from '@yaoyao/runtime';
 import {conversationStyle,dialogueStyleFailure} from '../src/conversation/style.js';
-import {hasContradictedUserFact,projectTurnMemories,focusDisclosureHistory,hasUnsupportedPlanOutcome} from '../src/conversation/memory-context.js';
+import {hasContradictedUserFact,projectTurnMemories,focusDisclosureHistory,hasUnsupportedPlanOutcome,renderMemoryUseGuidance} from '../src/conversation/memory-context.js';
 import {renderConversationContinuity} from '../src/conversation/continuity.js';
 const context=(...summaries:string[])=>({memories:summaries.map((summary,i)=>({memoryId:String(i),summary})),telemetry:{selectedCount:summaries.length}})as RelevantMemoryContext;
 const decision=(text:string)=>baselineDecision({currentInput:text,emotion:{},situation:{intent:'chat',urgency:'normal',taskNature:'general'},recentConversation:[],userId:'u',yaoyaoId:'y',personaTone:'warm',traceId:'t'});
+describe('006EF natural expression refinement',()=>{
+ it.each(['宝贝，我爱你。','我们计划去函馆。','我今天不喝茶。'])('ordinary messages do not receive plan-recall instructions: %s',text=>{
+   const guidance=renderMemoryUseGuidance(text);
+   expect(guidance).not.toContain('只有共同计划');
+   expect(guidance).toContain('C6 助手的话不是用户事实');
+ });
+ it('recall questions retain outcome uncertainty without prescribing a stock answer',()=>{
+   const guidance=renderMemoryUseGuidance('我们去过函馆了吗？');
+   expect(guidance).toContain('不能证明已发生或未发生');
+   expect(guidance).not.toContain('应说');
+ });
+ it('quoted recall examples do not activate recall guidance',()=>expect(renderMemoryUseGuidance('解释“你记得吗”这句。')).not.toContain('只有共同计划'));
+ it('affection receives expression guidance without a compulsory consolation ending',()=>{
+   const guidance=renderConversationContinuity('宝贝，我爱你。',[]);
+   expect(guidance).toContain('亲昵的话可以直接回应亲昵');
+   expect(guidance).toContain('不是默认结尾');
+   expect(guidance).not.toContain('应说“你只提过计划');
+ });
+});
 describe('006EF pacing and bounded repair',()=>{
  it('a punctuation-free confirmation tag is still an unwanted question for a disclosure',()=>{expect(dialogueStyleFailure('只是今天不喝，对吧。','我今天不喝柚香焙茶。')).toBe('dialogue: unwanted question');expect(dialogueStyleFailure('你说“对吧”这个词。','我今天不喝柚香焙茶。')).toBeNull();});
  it('a standalone shared plan pauses unrelated old questions',()=>{const text='我们计划去函馆。';expect(conversationStyle(text).disclosure).toBe(true);expect(decision(text)).toMatchObject({primaryIntent:'acknowledge',followUp:'none',topicContinuity:'open'});expect(focusDisclosureHistory(text,[{role:'user',text:'我想做拿铁'},{role:'assistant',text:'你杯子多大？'}]as never)).toHaveLength(0);expect(dialogueStyleFailure('函馆挺好，不过我们的拿铁还差你杯子多大这一句，先把这个告诉我？',text)).not.toBeNull();});

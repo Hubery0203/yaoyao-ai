@@ -41,7 +41,7 @@ export function renderConversationContinuity(input:string,recent:readonly string
     ...(isRecentRepeatedStatement(input,recent)?['This repeats a recent literal statement: acknowledge or continue naturally; do not probe why it was repeated, accuse the user of testing you, or promise a permanent save.']:[]),
     ...(short?['This is a short reply: first resolve it against the last question in C6. Clarify only if its referent is ambiguous.']:[]),
     renderNaturalDialogue(style),
-    renderMemoryUseGuidance(),
+    renderMemoryUseGuidance(input),
   ].join('\n');
 }
 export function normalizedConversationText(text:string):string {
