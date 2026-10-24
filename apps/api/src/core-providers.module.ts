@@ -1,3 +1,5 @@
+import { WeixinBridgeService } from "./weixin-bridge.service.js";
+import { WEIXIN_CHANNEL } from "@yaoyao/application";
 import { LiteRuntimeService } from "./lite-runtime.service.js";
 import { TransactionalTemporalEmotionWriter } from "./temporal-emotion.adapter.js";
 import { TEMPORAL_EMOTION_WRITER, type TemporalEmotionWriter } from "@yaoyao/application";
@@ -96,6 +98,8 @@ const PG_POOL = "YAOYAO_PG_POOL";
       return {record:(quality:object)=>logger.info({event:"conversation_quality",quality},"Conversation generation quality")};
     }},
     LiteRuntimeService,
+    WeixinBridgeService,
+    {provide:WEIXIN_CHANNEL,useExisting:WeixinBridgeService},
     {provide:"CONVERSATION_GATE",useExisting:LiteRuntimeService},
     {provide:"YAOYAO_CONNECTION_INFO",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>({
       provider:config.LLM_L2_PROVIDER,model:config.LLM_L2_PROVIDER==="deepseek"?config.DEEPSEEK_MODEL:
@@ -221,6 +225,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     },
   ],
   exports: [
+    WEIXIN_CHANNEL,
     "CONVERSATION_GATE",
     "CONVERSATION_QUALITY",
     "YAOYAO_CONNECTION_INFO",
@@ -239,7 +244,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
   ],
 })
 export class CoreProvidersModule implements OnModuleDestroy {
-  constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+  constructor(@Inject(PG_POOL) private readonly pool: Pool, @Inject(WeixinBridgeService) private readonly weixin:WeixinBridgeService) {}
 
   /**
    * Drain the pg pool on shutdown. Without this, app.close() leaves
@@ -248,6 +253,7 @@ export class CoreProvidersModule implements OnModuleDestroy {
    * uncaught exceptions that fail the CI run.
    */
   async onModuleDestroy(): Promise<void> {
+    await this.weixin.stop();
     await this.pool.end().catch(() => undefined);
   }
 }

@@ -40,3 +40,6 @@ export {
 } from "./auth/token-service.js";
 export { PostgresAuthCredentialRepository } from "./auth/auth-credentials.js";
 export { PostgresHealthProbe } from "./auth/health-probe.js";
+
+export * from "./weixin/client.js";
+export * from "./weixin/store.js";

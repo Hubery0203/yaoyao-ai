@@ -9,6 +9,8 @@ import { z } from "zod";
  */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  WEIXIN_ENABLED: z.enum(["0","1"]).default("0"),
+  WEIXIN_CREDENTIALS_FILE: z.string().min(1).optional(),
   LITE_MODE: z.enum(["0","1"]).default("0"),
   PG_POOL_MAX: z.coerce.number().int().min(1).max(10).default(10),
   HOST: z.enum(["127.0.0.1", "0.0.0.0", "::1"]).default("0.0.0.0"),
