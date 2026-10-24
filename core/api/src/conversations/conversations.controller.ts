@@ -8,6 +8,7 @@ import {
   CONVERSATION_ORCHESTRATOR,
   ConversationOrchestrator,
   summarizeTurnQuality,
+  summarizeTurnPerformance,
 } from "@yaoyao/runtime";
 import { requirePrincipal } from "../auth/jwt-auth.guard.js";
 import { ZodValidationPipe } from "../common/zod-validation.pipe.js";
@@ -24,6 +25,7 @@ export class ConversationsController {
     private readonly orchestrator: ConversationOrchestrator,
     @Optional() @Inject("CONVERSATION_GATE") private readonly gate?:{acquire():boolean;release():void},
     @Optional() @Inject("CONVERSATION_QUALITY") private readonly quality?:{record(entry:ReturnType<typeof summarizeTurnQuality>):void},
+    @Optional() @Inject("CONVERSATION_PERFORMANCE") private readonly performance?:{record(entry:ReturnType<typeof summarizeTurnPerformance>,source:"web"|"weixin"):void},
   ) {}
 
   @Get("connection")
@@ -64,6 +66,7 @@ export class ConversationsController {
       requestId,
     });
     try{this.quality?.record(summarizeTurnQuality(trace));}catch{/* Telemetry cannot turn a committed message into a failed send. */}
+    try{this.performance?.record(summarizeTurnPerformance(trace),"web");}catch{/* Telemetry cannot fail a committed reply. */}
     return { response };
     }finally{this.gate?.release();}
   }

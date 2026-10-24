@@ -21,6 +21,7 @@ import type { DomainEvent } from "@yaoyao/domain";
 import type { PersonaData } from "@yaoyao/application";
 import {
   allocateBudget,
+  estimateTokens,
   makeLayer,
   type BudgetConfig,
   type BudgetResult,
@@ -39,6 +40,7 @@ import { PersonaRuntime } from "../persona/persona-runtime.js";
 export interface AssembledContext {
   readonly promptContext: PromptContext;
   readonly budget: BudgetResult;
+  readonly history: {included:number;dropped:number;newestTruncated:boolean};
   /** The real yaoyaoId resolved from the user (TD-M002A-001 fixed). */
   readonly yaoyaoId: string;
 }
@@ -62,6 +64,7 @@ export interface AssembleInput {
 const DEFAULT_BUDGET: BudgetConfig = {
   totalBudget: 8000,
   reservedOutputTokens: 2000,
+  reservedInputOverheadTokens:1200,
 };
 
 /**
@@ -111,10 +114,17 @@ export class ContextAssembler {
       this.buildC3(behavioral),
       this.buildC4(memoryContext),
       this.buildC5(data.recentEvents),
-      this.buildC6(conversationHistory),
+      this.buildC6([]),
       this.buildC7(inputText),
     ];
 
+    // Reserve P0 and state first, then retain a suffix of history. The old
+    // all-or-nothing C6 could discard every recent turn on a long conversation.
+    const remaining=Math.max(0,this.budget.totalBudget-this.budget.reservedOutputTokens-(this.budget.reservedInputOverheadTokens??0)-layers.filter(l=>l.priority===0||l.id==='C2').reduce((n,l)=>n+l.estimatedTokenCost,0));
+    const optionalCost=layers.filter(l=>l.priority===2).reduce((n,l)=>n+l.estimatedTokenCost,0);
+    const historyTokens=Math.min(2400,Math.max(Math.min(512,remaining),remaining-optionalCost));
+    const history=this.fitHistory(conversationHistory??[],historyTokens);
+    layers[6]=history.layer;
     const result = allocateBudget(layers, this.budget);
     const byId = new Map(result.included.map((l) => [l.id, l]));
 
@@ -129,6 +139,7 @@ export class ContextAssembler {
         contextText: this.buildContextText(byId),
       },
       budget: result,
+      history:{included:result.included.some(l=>l.id==='C6')?history.included:0,dropped:(conversationHistory?.length??0)-(result.included.some(l=>l.id==='C6')?history.included:0),newestTruncated:result.included.some(l=>l.id==='C6')&&history.newestTruncated},
       yaoyaoId: String(data.yaoyao.yaoyaoId),
     };
   }
@@ -195,6 +206,23 @@ export class ContextAssembler {
         ? "Recent events: none."
         : ["Recent events (newest first):", ...projected.map((e) => `- [${e.type}] ${e.summary}`)].join("\n");
     return makeLayer("C5", LAYER_PRIORITY.C5, content);
+  }
+
+  private fitHistory(turns:ReadonlyArray<ConversationTurn>,tokens:number):{layer:ContextLayer;included:number;newestTruncated:boolean} {
+    let selected:ConversationTurn[]=[];
+    for(let i=turns.length-1;i>=0;i--){
+      const candidate=[turns[i],...selected];
+      if(this.buildC6(candidate).estimatedTokenCost>tokens)break;
+      selected=candidate;
+    }
+    if(selected.length||!turns.length)return {layer:this.buildC6(selected),included:selected.length,newestTruncated:false};
+    const latest=turns[turns.length-1];
+    // If a single long message fills the window, retain an explicitly marked
+    // suffix. This changes model context only; stored history remains complete.
+    const characters=Array.from(latest.text);
+    let low=1,high=characters.length,best:ContextLayer|undefined;
+    while(low<=high){const keep=Math.floor((low+high)/2);const text='[PARTIAL historical message: earlier text omitted; do not infer standalone facts] '+(keep?characters.slice(-keep).join(''):'');const layer=this.buildC6([{...latest,text}]);if(estimateTokens(layer.content)<=tokens){best=layer;low=keep+1;}else high=keep-1;}
+    return {layer:best??makeLayer('C6',LAYER_PRIORITY.C6,'Conversation history omitted for context budget.'),included:best?1:0,newestTruncated:!!best};
   }
 
   private buildC6(turns: ReadonlyArray<ConversationTurn> = []): ContextLayer {

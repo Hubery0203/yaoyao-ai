@@ -10,7 +10,7 @@
  * - Records layersIncluded / layersDropped / estimatedInputTokens /
  *   reservedOutputTokens / totalBudget for the trace.
  *
- * Token estimation heuristic: ceil(chars / 4). This is a rough estimate
+ * Token estimation heuristic: ASCII chars / 4, CJK chars * 1.5, other UTF-16 units. This is a rough estimate
  * for mixed Chinese/English text, documented as such. It is used ONLY
  * for budget decisions, never as a billing or limit authority.
  */
@@ -19,6 +19,8 @@ import type { ContextLayer, ContextLayerId } from "./layers.js";
 export interface BudgetConfig {
   /** Total model context window available for this turn. */
   readonly totalBudget: number;
+  /** Space for decision/continuity/schema guidance appended outside C0-C7. */
+  readonly reservedInputOverheadTokens?:number;
   /** Tokens reserved for the model's output. Never given to input. */
   readonly reservedOutputTokens: number;
 }
@@ -31,9 +33,13 @@ export interface BudgetResult {
   readonly totalBudget: number;
 }
 
-/** Rough chars→tokens estimate for budget decisions only. */
+const CJK_CHARACTER=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/** Conservative heuristic for mixed text; not a tokenizer or billing estimate. */
 export function estimateTokens(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 4));
+  let ascii=0,cjk=0,other=0;
+  for(const char of text){if((char.codePointAt(0)??0)<128)ascii++;else if(CJK_CHARACTER.test(char))cjk++;else other+=char.length;}
+  return Math.max(1,Math.ceil(ascii/4+cjk*1.5+other));
 }
 
 export function makeLayer(
@@ -48,7 +54,7 @@ export function allocateBudget(
   layers: ReadonlyArray<ContextLayer>,
   config: BudgetConfig,
 ): BudgetResult {
-  const inputBudget = config.totalBudget - config.reservedOutputTokens;
+  const inputBudget = config.totalBudget - config.reservedOutputTokens - (config.reservedInputOverheadTokens??0);
   if (inputBudget <= 0) {
     throw new Error("totalBudget must exceed reservedOutputTokens");
   }

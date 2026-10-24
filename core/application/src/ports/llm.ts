@@ -121,6 +121,10 @@ export interface LLMRequest {
   readonly decision: import("./decision.js").Decision;
   readonly outputSchemaName: string;
   readonly timeoutMs: number;
+  /** Provider-neutral output cap; adapters enforce their supported range. */
+  readonly maxOutputTokens?: number;
+  /** C7 already carries the input; do not append it a second time. */
+  readonly userInputInContext?: boolean;
   readonly metadata: {
     readonly runtimeVersion: string;
     readonly contextVersion: string;
@@ -137,6 +141,11 @@ export interface ProviderCapabilities {
   readonly costTier: 1 | 2 | 3;
 }
 
+export interface SuccessfulProviderUsage {
+  readonly inputTokens:number;
+  readonly outputTokens:number;
+}
+
 /**
  * LLMProvider — the single port through which the runtime reaches any model.
  *
@@ -148,6 +157,8 @@ export interface LLMProvider {
   readonly modelId: string;
   readonly capabilities: ProviderCapabilities;
   generate(request: LLMRequest): Promise<LLMProposal>;
+  /** Optional successful-response usage; telemetry only, never a Core fact. */
+  usageFor?(proposal:LLMProposal):SuccessfulProviderUsage|undefined;
 }
 
 /** NestJS injection token for the LLMProvider. */
@@ -192,6 +203,8 @@ export class ProviderError extends Error {
 
 /** Per-call observability record (002C §XIV). Never contains secrets. */
 export interface ProviderCallTelemetry {
+  readonly attempts?:number;
+  readonly successfulUsage?:SuccessfulProviderUsage;
   readonly requestId: string;
   readonly providerId: string;
   readonly modelId: string;

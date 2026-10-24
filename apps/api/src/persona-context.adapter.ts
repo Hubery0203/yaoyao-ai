@@ -35,11 +35,11 @@ export class TransactionalContextDataAdapter implements ContextDataPort {
 
   async loadPersonaData(userId: UserId): Promise<PersonaData> {
     return this.transactions.runAsUser(userId, async (tx) => {
-      const [yaoyao, relationship, state, eventPage] = await Promise.all([
-        getYaoYaoIdentity(tx, { userId }),
+      const yaoyao=await getYaoYaoIdentity(tx,{userId});
+      const [relationship, state, eventPage] = await Promise.all([
         getRelationship(tx, { userId }),
         getCurrentState(tx, { userId }),
-        (async()=>{if(!tx.events.readWindow)return listEvents(tx,{userId,limit:20});const a=await tx.aggregates.loadOwned(userId);return tx.events.readWindow(userId,a.yaoyaoId,{limit:20});})(),
+        (async()=>{if(!tx.events.readWindow)return listEvents(tx,{userId,limit:20});return tx.events.readWindow(userId,yaoyao.yaoyaoId,{limit:20});})(),
       ]);
       return {
         yaoyao,

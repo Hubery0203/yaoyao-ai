@@ -42,6 +42,7 @@ import {
   ConversationOrchestrator,
   MockLLMProvider,
   RouterEmotionInterpreter,
+  summarizeTurnPerformance,
 } from "@yaoyao/runtime";
 import { TransactionalContextDataAdapter } from "./persona-context.adapter.js";
 import { TransactionalEmotionWriter } from "./emotion-writer.adapter.js";
@@ -96,6 +97,13 @@ const PG_POOL = "YAOYAO_PG_POOL";
     {provide:"CONVERSATION_QUALITY",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>{
       const logger=createLogger(config).child({component:"conversation-quality"});
       return {record:(quality:object)=>logger.info({event:"conversation_quality",quality},"Conversation generation quality")};
+    }},
+    {provide:"CONVERSATION_PERFORMANCE",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>{
+      const logger=createLogger(config).child({component:"conversation-performance"});
+      return {record:(performance:ReturnType<typeof summarizeTurnPerformance>,source:'web'|'weixin')=>{
+        const memory=process.memoryUsage();
+        logger.info({event:"conversation_performance",source,performance,process:{rssMiB:Math.round(memory.rss/1048576),heapMiB:Math.round(memory.heapUsed/1048576)}},"Conversation resource summary");
+      }};
     }},
     LiteRuntimeService,
     WeixinBridgeService,
@@ -153,13 +161,13 @@ const PG_POOL = "YAOYAO_PG_POOL";
     {
       provide: "YAOYAO_AI_ROUTER",
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig) =>
-        new AIRouter({
-          l1: buildProvider(config.LLM_L1_PROVIDER, config),
-          l2: buildProvider(config.LLM_L2_PROVIDER, config),
-          l3: buildProvider(config.LLM_L3_PROVIDER, config),
-          fallback: buildProvider(config.LLM_FALLBACK_PROVIDER, config),
-        }),
+      useFactory: (config: AppConfig) => {
+        // One client per configured provider in this app instance. All tiers
+        // currently share provider credentials/model; no cross-app cache.
+        const providers=new Map<string,LLMProvider>();
+        const get=(name:AppConfig["LLM_L1_PROVIDER"])=>{let provider=providers.get(name);if(!provider){provider=buildProvider(name,config);providers.set(name,provider);}return provider;};
+        return new AIRouter({l1:get(config.LLM_L1_PROVIDER),l2:get(config.LLM_L2_PROVIDER),l3:get(config.LLM_L3_PROVIDER),fallback:get(config.LLM_FALLBACK_PROVIDER)});
+      },
     },
     // MVP-002B: Context data wiring. The adapter composes MVP-001 read
     // use cases inside a scoped read transaction (read-only).
@@ -181,8 +189,8 @@ const PG_POOL = "YAOYAO_PG_POOL";
     // the domain transition (I-016).
     {
       provide: EMOTION_INTERPRETER,
-      inject: ["YAOYAO_AI_ROUTER"],
-      useFactory: (router: AIRouter) => new RouterEmotionInterpreter(router),
+      inject: ["YAOYAO_AI_ROUTER",APP_CONFIG],
+      useFactory: (router: AIRouter,config:AppConfig) => new RouterEmotionInterpreter(router,config.EMOTION_OUTPUT_TOKENS),
     },
     {
       provide: EMOTION_STATE_WRITER,
@@ -203,6 +211,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
         EMOTION_STATE_WRITER,
         CONVERSATION_EVENTS,
         TEMPORAL_EMOTION_WRITER,
+        APP_CONFIG,
       ],
       useFactory: (
         router: AIRouter,
@@ -212,8 +221,10 @@ const PG_POOL = "YAOYAO_PG_POOL";
         emotionWriter: EmotionStateWriter,
         conversationEvents: ConversationEventPort,
         temporalEmotion: TemporalEmotionWriter,
+        config:AppConfig,
       ) =>
         new ConversationOrchestrator({
+          modelBudgetMs:config.CONVERSATION_MODEL_BUDGET_MS,maxOutputTokens:config.CONVERSATION_OUTPUT_TOKENS,
           router,
           contextData,
           memoryRetrieval,
@@ -228,6 +239,7 @@ const PG_POOL = "YAOYAO_PG_POOL";
     WEIXIN_CHANNEL,
     "CONVERSATION_GATE",
     "CONVERSATION_QUALITY",
+    "CONVERSATION_PERFORMANCE",
     "YAOYAO_CONNECTION_INFO",
     TRANSACTION_MANAGER,
     PASSWORD_HASHER,

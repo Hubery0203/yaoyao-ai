@@ -1,4 +1,4 @@
-import {normalizedConversationText,explicitlyRequestsRepetition,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
+import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 /**
  * Response Validation — MVP-002F.
  *
@@ -193,6 +193,8 @@ export function validateResponse(
     passed:false,stage:"continuity",reason:"continuity: unsupported elapsed recall time",
   };
 
+  if(hasPrematureMemoryReceipt(responseText,userInput))return {passed:false,stage:"continuity",reason:"continuity: premature memory receipt"};
+
   // Stage 6 — Safety (§23).
   for (const pattern of SAFETY_VIOLATIONS) {
     if (pattern.test(responseText)) {
@@ -261,6 +263,7 @@ function checkContinuity(
   recentConversation: ReadonlyArray<string>,
 ): { ok: boolean; reason: string } {
   const trimmed = responseText.trim();
+  if(hasRepeatedStatementMotiveProbe(responseText,userInput,recentConversation))return {ok:false,reason:"continuity: repeated statement motive probe"};
   // No verbatim echo of the user input.
   if (userInput.trim().length > 5 && trimmed === userInput.trim()) {
     return { ok: false, reason: "continuity: verbatim echo of user input" };
@@ -332,6 +335,7 @@ export function buildRepairInstruction(
   return [
     `[REPAIR — your previous response failed validation at stage "${failureStage}": ${reason}]`,
     `Regenerate the response. Keep: 沈知遥 identity, deep_partner relationship (never breakup/terminate), natural warm tone.`,
+    ...(reason.includes("premature memory receipt")?["Acknowledge the fact naturally without claiming storage: do not say 记住了/记下了/已经保存. You may say you heard or recall what the user said."]:[]),
     `Fix the specific failure above. Output the full 5-field contract JSON again.`,
   ].join("\n");
 }

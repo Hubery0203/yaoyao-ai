@@ -53,7 +53,7 @@ Rules:
 - Be conservative: small, believable shifts. Emotion does not instantly reset.`;
 
 export class RouterEmotionInterpreter implements EmotionInterpreter {
-  constructor(private readonly router: AIRouter) {}
+  constructor(private readonly router: AIRouter,private readonly maxOutputTokens=512) {}
 
   async interpret(
     input: EmotionInterpretationInput,
@@ -105,7 +105,8 @@ export class RouterEmotionInterpreter implements EmotionInterpreter {
         selfExpression: "none",
       },
       outputSchemaName: EMOTION_PROPOSAL_SCHEMA_NAME,
-      timeoutMs: 20_000,
+      timeoutMs: Math.max(1,Math.min(20000,input.timeoutMs??20000)),
+      maxOutputTokens:this.maxOutputTokens,
       metadata: {
         runtimeVersion: "mvp-002e",
         contextVersion: "emotion-v1",
@@ -151,6 +152,8 @@ export class RouterEmotionInterpreter implements EmotionInterpreter {
         latencyMs: telemetry.latencyMs,
         retryCount: telemetry.retryCount,
         fallbackUsed: telemetry.fallbackUsed,
+        attempts:telemetry.attempts,
+        successfulUsage:telemetry.successfulUsage,
       },
     };
   }

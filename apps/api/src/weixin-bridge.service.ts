@@ -1,5 +1,5 @@
 /** One personal Weixin channel; the existing Core remains the conversation authority. */
-import {Inject,Injectable,type OnModuleInit} from '@nestjs/common';
+import {Inject,Injectable,Optional,type OnModuleInit} from '@nestjs/common';
 import {constants} from 'node:fs';
 import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
 import {type WeixinChannelPort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
-import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator} from '@yaoyao/runtime';
+import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
 import {loadConfig,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,type WeixinRow} from '@yaoyao/infrastructure';
 import {LiteRuntimeService} from './lite-runtime.service.js';
 const sleep=(ms:number)=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
@@ -47,7 +47,9 @@ export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,
 @Injectable()
 export class WeixinBridgeService implements OnModuleInit,WeixinChannelPort {
  private readonly config=loadConfig();private store?:WeixinStore;private client?:WeixinClient;private running?:Promise<void>;private stopped=false;
- constructor(@Inject('YAOYAO_PG_POOL') private readonly pool:Pool,@Inject(CONVERSATION_ORCHESTRATOR) private readonly core:ConversationOrchestrator,@Inject(LiteRuntimeService) private readonly gate:LiteRuntimeService){}
+ constructor(@Inject('YAOYAO_PG_POOL') private readonly pool:Pool,@Inject(CONVERSATION_ORCHESTRATOR) private readonly core:ConversationOrchestrator,@Inject(LiteRuntimeService) private readonly gate:LiteRuntimeService,
+  @Optional() @Inject('CONVERSATION_QUALITY') private readonly quality?:{record(entry:ReturnType<typeof summarizeTurnQuality>):void},
+  @Optional() @Inject('CONVERSATION_PERFORMANCE') private readonly performance?:{record(entry:ReturnType<typeof summarizeTurnPerformance>,source:'web'|'weixin'):void}){}
  async onModuleInit():Promise<void>{
   if(this.config.WEIXIN_ENABLED!=='1')return;
   if(!this.config.WEIXIN_CREDENTIALS_FILE||!this.config.DATABASE_URL)throw Error('WEIXIN_CONFIGURATION_REQUIRED');
@@ -70,7 +72,10 @@ export class WeixinBridgeService implements OnModuleInit,WeixinChannelPort {
      if(!this.gate.acquire()){await sleep(1000);continue;}
      try{await processWeixinMessage(row,store,client,async(userId,text,key)=>{
       this.gate.registerOwner(userId);
-      return (await this.core.converse({userId:userId as UserId,text,requestId:key,traceId:randomUUID()})).response;
+      const result=await this.core.converse({userId:userId as UserId,text,requestId:key,traceId:randomUUID()});
+      try{this.quality?.record(summarizeTurnQuality(result.trace));}catch{/* Telemetry cannot fail Core replay. */}
+      try{this.performance?.record(summarizeTurnPerformance(result.trace),'weixin');}catch{/* Numeric telemetry only. */}
+      return result.response;
      });}finally{this.gate.release();}
      continue;
     }
