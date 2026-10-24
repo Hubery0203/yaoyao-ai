@@ -337,7 +337,7 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
   it('006F: independent conflicting facts are withheld without changing stored records',async()=>{
     const owner=await setupUser(db);await insertMemories(db,owner,['我住在东京。','我住在大阪。'].map(content=>({memoryId:newMemoryId()as string,content:'用户陈述：'+content,type:'SEMANTIC' as const,importance:'0.8',confidence:'0.9',status:'CONSOLIDATED' as const})));
     const result=await new PostgresMemoryRetrievalAdapter(db.appPool).retrieve(retrievalInput(owner,'我现在住哪里？'));expect(result.memories).toHaveLength(0);expect(result.telemetry.candidateCount).toBe(2);
-    const rows=await db.adminPool.query('SELECT status,times_recalled,version FROM memories WHERE user_id=$1',[owner.userId]);expect(rows.rows).toHaveLength(2);for(const row of rows.rows)expect(row).toMatchObject({status:'CONSOLIDATED',times_recalled:0,version:1});
+    const rows=await db.adminPool.query('SELECT status,times_recalled,version FROM memories WHERE user_id=$1',[owner.userId]);expect(rows.rows).toHaveLength(2);for(const row of rows.rows)expect(row).toMatchObject({status:'CONSOLIDATED',times_recalled:'0',version:1});
   });
 
 });
