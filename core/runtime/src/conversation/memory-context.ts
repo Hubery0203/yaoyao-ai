@@ -62,7 +62,7 @@ export function hasUnsupportedPlanOutcome(response:string,input:string,recent:re
     const literal=t.trim().replace(/[。！!]+$/u,'');
     // A previous "我们去过 X 吗？" is a question, never completion evidence.
     // Only literal owner assertions can establish an outcome here.
-    return ['我们去过','我们已经去过','我们去了','我们已经去了','我们还没有去过','我们没去过'].some(prefix=>literal===prefix+d||literal===prefix+d+'了');
+    return ['我们去过','我们已经去过','我们去了','我们已经去了','我们还没有去过','我们没有去过','我们还没去过','我们没去过'].some(prefix=>literal===prefix+d||literal===prefix+d+'了');
   }));
   if(!relevant.length)return false;
   return response.replace(/“[^”]*”|「[^」]*」|"[^"\n]*"/gu,'').split(/[，,。！？!?；;\n]/u).some(c=>{
