@@ -316,12 +316,19 @@ function checkContinuity(
 export function buildFallbackResponse(input: {
   userInput: string;
   decision: Decision;
+  recentConversation?:ReadonlyArray<string>;
 }): string {
   const { decision } = input;
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
   if(style.styleFeedback)return '嗯，刚才说得太端着了。';
   if(style.acknowledgment)return /^晚安/u.test(input.userInput.trim())?'晚安。':'好呀。';
+  // Style guards and their exhaustion path must obey the same pacing rule.
+  // A literal temporary restriction is user evidence, not a new durable fact.
+  if(/^我(?:今天|今晚|这次|暂时)(?:不喝|不想喝)[^，,。！？!?]{1,80}[。！!]?$/u.test(input.userInput.trim()))return '好，那就先不喝。';
+  if(/^我(?:今天|今晚|这次|暂时)(?:不吃|不想吃)[^，,。！？!?]{1,80}[。！!]?$/u.test(input.userInput.trim()))return '好，这次就先不吃。';
+  if(style.disclosure)return '好呀。';
+  if(hasUnsupportedPlanOutcome('还没有。',input.userInput,input.recentConversation??[]))return '你之前提过这个计划，没说是否已经去过。';
   switch (decision.primaryIntent) {
     case "comfort":
     case "care":

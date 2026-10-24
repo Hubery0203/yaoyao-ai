@@ -394,6 +394,7 @@ export class ConversationOrchestrator {
       finalResponse = buildFallbackResponse({
         userInput: input.text,
         decision,
+        recentConversation:recentConversationTexts,
       });
     }
     (trace as { validation?: unknown }).validation = {
