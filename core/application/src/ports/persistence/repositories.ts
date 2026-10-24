@@ -189,6 +189,7 @@ export interface MemoryContainerRepository {
 }
 
 export interface MemoryRepository {
+  pageOwned?(userId:UserId,filter:{type?:MemoryType;status?:MemoryStatus;limit:number;offset:number}):Promise<{memories:Memory[];total:number}>;
   findOwned(userId: UserId, memoryId: MemoryId): Promise<Memory>;
   insert(memory: Memory): Promise<void>;
   /** Persist a lifecycle transition (validate/consolidate/correct/archive/recall). */

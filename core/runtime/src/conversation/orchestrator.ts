@@ -201,6 +201,7 @@ export class ConversationOrchestrator {
     // C6 live in 002G). PersonaData was loaded in Step 2 (reused here).
     // History → Memory Retrieval (read-only) → Persona Runtime → C0–C7 → budget.
     // MVP-002G: load conversation history first (feeds C6 + retrieval).
+    const turnTime=new Date();
     const conversationHistory = conversationEvents
       ? await conversationEvents.loadHistory({
           userId: input.userId as never,
@@ -296,7 +297,7 @@ export class ConversationOrchestrator {
       systemContext: [
         assembled.promptContext.systemPrompt,
         renderDecisionGuidance(decision),
-        renderConversationContinuity(input.text,recentConversationTexts.slice(-6)),
+        renderConversationContinuity(input.text,recentConversationTexts.slice(-6),{now:turnTime,turns:conversationHistory}),
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInput: input.text,
@@ -330,6 +331,7 @@ export class ConversationOrchestrator {
       decision,
       userInput: input.text,
       recentConversation: recentConversationTexts.slice(-6),
+      timing:{now:turnTime,turns:conversationHistory},
     });
     const failures=validationOutcome.passed?[]:[validationFailureSummary(validationOutcome)];
     let repairAttempts = 0;
@@ -360,6 +362,7 @@ export class ConversationOrchestrator {
         decision,
         userInput: input.text,
         recentConversation: recentConversationTexts.slice(-6),
+        timing:{now:turnTime,turns:conversationHistory},
       });
       if(!validationOutcome.passed)failures.push(validationFailureSummary(validationOutcome));
     }

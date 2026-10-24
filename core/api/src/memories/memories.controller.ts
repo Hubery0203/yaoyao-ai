@@ -1,13 +1,16 @@
-import { Body, Controller, Get, Inject, Query, Req, Param, Post, ParseUUIDPipe, ParseIntPipe, NotFoundException } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Query, Req, Param, Post, ParseUUIDPipe, ParseIntPipe, NotFoundException, Headers, BadRequestException, HttpCode } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
   TRANSACTION_MANAGER,
   listMemories,
   resolveMemoryCandidate,
   replayMemoryEvaluation,
+  readMemoryDetail,
+  correctOwnedMemory,
   type TransactionManager,
+  type CandidateAudit,
 } from "@yaoyao/application";
-import type { MemoryStatus, MemoryType } from "@yaoyao/domain";
+import type { MemoryId, MemoryStatus, MemoryType } from "@yaoyao/domain";
 import type { Request } from "express";
 import { requirePrincipal } from "../auth/jwt-auth.guard.js";
 import { ZodValidationPipe } from "../common/zod-validation.pipe.js";
@@ -53,6 +56,40 @@ export class MemoriesController {
     return {data:{requeued}};
   }
 
+  @Get("review")
+  async review(@Req() request:Request,
+    @Query(new ZodValidationPipe(z.object({status:z.enum(["pending","resolved"]).default("pending"),
+      limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).default(0)}))) query:{status:"pending"|"resolved";limit:number;offset:number}) {
+    const {userId}=requirePrincipal(request);
+    return this.transactions.runAsUser(userId,async tx=>{
+      if(!tx.continuityProcessing.reviewPage)throw new NotFoundException("Review pagination unavailable");
+      const page=await tx.continuityProcessing.reviewPage(userId,query);
+      return {data:{...page,rows:page.rows.map(row=>{
+        const a=row.audit as CandidateAudit;const resolution=row.resolution as {decision?:unknown;memoryId?:unknown}|null;
+        return {job_id:String(row.job_id),ordinal:Number(row.ordinal),created_at:row.created_at,
+          audit:{outcome:a.outcome,reason:a.reason,candidate:{content:a.candidate.content,evidence:a.candidate.evidence,kind:a.candidate.kind}},
+          resolution:resolution?{decision:resolution.decision,memoryId:resolution.memoryId}:null};
+      })}};
+    });
+  }
+  @Get(":memoryId/detail")
+  async detail(@Req() request:Request,@Param("memoryId",ParseUUIDPipe) memoryId:string) {
+    const {userId}=requirePrincipal(request);
+    return this.transactions.runAsUser(userId,async tx=>{
+      const d=await readMemoryDetail(tx,userId,memoryId as MemoryId);
+      return {data:{...d,memory:projectMemory(d.memory),history:d.history.map(projectMemory)}};
+    });
+  }
+  @Post(":memoryId/correct")
+  @HttpCode(200)
+  async correct(@Req() request:Request,@Param("memoryId",ParseUUIDPipe) memoryId:string,
+    @Headers("idempotency-key") key:string|undefined,
+    @Body(new ZodValidationPipe(z.object({text:z.string().trim().min(1).max(500),expectedVersion:z.number().int().min(1)}).strict())) body:{text:string;expectedVersion:number}) {
+    const {userId}=requirePrincipal(request);
+    if(typeof key!=="string"||!/^[a-zA-Z0-9_-]{1,80}$/.test(key))throw new BadRequestException("Idempotency-Key required");
+    return {data:await this.transactions.runAsUser(userId,tx=>correctOwnedMemory(tx,{userId,memoryId:memoryId as MemoryId,
+      text:body.text,expectedVersion:body.expectedVersion,requestId:key}))};
+  }
   @Get()
   @ApiOperation({ summary: "Read authorized memory presentation data" })
   async list(

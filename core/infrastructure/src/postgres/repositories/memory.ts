@@ -22,7 +22,7 @@ import {
   type UserId,
   type YaoYaoId,
 } from "@yaoyao/domain";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db.js";
 import { mapPgError } from "../errors.js";
 import {
@@ -128,6 +128,17 @@ export class PostgresMemoryRepository implements MemoryRepository {
       .returning();
     if (rows.length === 0) throw new EntityNotFoundError("Memory");
     return fromMemoryRow(rows[0]);
+  }
+
+  async pageOwned(userId:UserId,filter:{type?:MemoryType;status?:MemoryStatus;limit:number;offset:number}):Promise<{memories:Memory[];total:number}> {
+    const conditions=[eq(memories.userId,userId as string)];
+    if(filter.type)conditions.push(eq(memories.type,filter.type));
+    if(filter.status)conditions.push(eq(memories.status,filter.status));
+    const where=and(...conditions);
+    const rows=await this.db.select().from(memories).where(where).orderBy(desc(memories.updatedAt),desc(memories.memoryId))
+      .limit(Math.min(200,Math.max(1,filter.limit))).offset(Math.max(0,filter.offset));
+    const count=await this.db.select({total:sql<number>`count(*)::int`}).from(memories).where(where);
+    return {memories:rows.map(fromMemoryRow),total:count[0].total};
   }
 
   async listOwned(
