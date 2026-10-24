@@ -13,6 +13,7 @@ ALTER TABLE weixin_messages
  ADD COLUMN outreach_version integer,
  ADD COLUMN outreach_day text,
  ADD COLUMN outreach_reason text,
+ ADD COLUMN send_attempted boolean NOT NULL DEFAULT false,
  ADD COLUMN history_recorded boolean NOT NULL DEFAULT false,
  ADD CONSTRAINT weixin_batch_parent FOREIGN KEY(bot_id,batch_key) REFERENCES weixin_messages(bot_id,message_key);
 CREATE INDEX weixin_leaders ON weixin_messages(bot_id,ordinal) WHERE batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped');

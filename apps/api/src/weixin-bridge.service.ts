@@ -106,7 +106,10 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
      try{this.quality?.record(summarizeTurnQuality(result.trace));}catch{/* Telemetry cannot fail Core replay. */}
      try{this.performance?.record(summarizeTurnPerformance(result.trace),'weixin');}catch{/* Numeric telemetry only. */}
      return result.response;
-    });}finally{this.gate.release();}
+    });
+    // Make accepted outreach visible before an immediate answer enters Core history.
+    if(row.origin==='proactive')this.lastHistory=0;
+    }finally{this.gate.release();}
    }catch(e){if(this.stopped)break;await this.channelError(store,e);await sleep(3000);}
   }
  }

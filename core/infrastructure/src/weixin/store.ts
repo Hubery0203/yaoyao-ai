@@ -124,7 +124,7 @@ export class WeixinStore {
     await db.query("UPDATE weixin_messages SET stage='skipped',last_error='OUTREACH_NO_LONGER_ELIGIBLE' WHERE bot_id=$1 AND message_key=$2",[this.credentials.botId,key]);return false;
    }
   }
-  await db.query("UPDATE weixin_messages SET stage='sending',attempts=attempts+1,updated_at=clock_timestamp() WHERE bot_id=$1 AND message_key=$2",[this.credentials.botId,key]);return true;
+  await db.query("UPDATE weixin_messages SET stage='sending',send_attempted=true,attempts=attempts+1,updated_at=clock_timestamp() WHERE bot_id=$1 AND message_key=$2",[this.credentials.botId,key]);return true;
  });}
  async settings(userId:string,settings:OutreachSettings):Promise<void>{
   if(!validateOutreachSettings(settings))throw Error('INVALID_OUTREACH_SETTINGS');
@@ -167,7 +167,7 @@ export class WeixinStore {
   if(!s.enabled||!c.user_id||c.paused||c.auth_expired||isQuietMinute(clock.minute,s)||!c.last_context_token||!c.last_inbound_at)return;
   const idle=now.getTime()-c.last_inbound_at.getTime();if(idle<600000||idle>=86400000)return;
   if((await db.query("SELECT 1 FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') LIMIT 1",[bot])).rowCount)return;
-  const n=(await db.query("SELECT count(*) FILTER(WHERE outreach_day=$2)::int daily,count(*) FILTER(WHERE created_at>$3)::int rolling FROM weixin_messages WHERE bot_id=$1 AND origin='proactive' AND (stage<>'skipped' OR attempts>0) AND (outreach_day=$2 OR created_at>$3)",[bot,clock.day,new Date(now.getTime()-86400000)])).rows[0];
+  const n=(await db.query("SELECT count(*) FILTER(WHERE outreach_day=$2)::int daily,count(*) FILTER(WHERE created_at>$3)::int rolling FROM weixin_messages WHERE bot_id=$1 AND origin='proactive' AND (stage<>'skipped' OR send_attempted) AND (outreach_day=$2 OR created_at>$3)",[bot,clock.day,new Date(now.getTime()-86400000)])).rows[0];
   if(n.daily>=s.dailyLimit||n.rolling>=s.dailyLimit)return;
   const job=(await db.query("SELECT * FROM weixin_followups WHERE bot_id=$1 AND stage='pending' AND due_at<=$2 AND expires_at>$2 AND due_at>= $3 ORDER BY due_at,id LIMIT 1 FOR UPDATE",[bot,now,c.outreach_since])).rows[0];
   let reason:string,message:string;
