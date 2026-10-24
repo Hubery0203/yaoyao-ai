@@ -4,9 +4,15 @@ import {EmotionVector} from '@yaoyao/domain';
 import {AIRouter,ConversationOrchestrator,baselineDecision,buildFallbackResponse,summarizeTurnQuality} from '@yaoyao/runtime';
 import {conversationStyle,dialogueStyleFailure} from '../src/conversation/style.js';
 import {hasContradictedUserFact,projectTurnMemories,focusDisclosureHistory,hasUnsupportedPlanOutcome,renderMemoryUseGuidance} from '../src/conversation/memory-context.js';
+import {validationFailureSummary} from '../src/conversation/quality.js';
 import {renderConversationContinuity} from '../src/conversation/continuity.js';
 const context=(...summaries:string[])=>({memories:summaries.map((summary,i)=>({memoryId:String(i),summary})),telemetry:{selectedCount:summaries.length}})as RelevantMemoryContext;
 const decision=(text:string)=>baselineDecision({currentInput:text,emotion:{},situation:{intent:'chat',urgency:'normal',taskNature:'general'},recentConversation:[],userId:'u',yaoyaoId:'y',personaTone:'warm',traceId:'t'});
+describe('006EF observed offline invention',()=>{
+ it.each(['我这边刚把手里的事收尾，水声大吗？','我刚下班。','我正在喝着咖啡。'])('rejects an unsupported offline self-report: %s',reply=>expect(dialogueStyleFailure(reply,'河边风挺舒服。')).toBe('dialogue: invented offline activity'));
+ it.each(['你说“我刚下班”是指现在吗？','我没有刚下班。','如果我刚下班，会想休息。','我刚说的是你的计划。','你刚下班，辛苦了。'])('preserves quoted, conditional and non-physical statements: %s',reply=>expect(dialogueStyleFailure(reply,'河边风挺舒服。')).toBeNull());
+ it('records only an allowlisted failure code',()=>expect(validationFailureSummary({stage:'continuity',reason:'dialogue: invented offline activity'})).toEqual({stage:'continuity',code:'offline_invention'}));
+});
 describe('006EF natural expression refinement',()=>{
  it.each(['宝贝，我爱你。','我们计划去函馆。','我今天不喝茶。'])('ordinary messages do not receive plan-recall instructions: %s',text=>{
    const guidance=renderMemoryUseGuidance(text);
@@ -21,7 +27,7 @@ describe('006EF natural expression refinement',()=>{
  it('quoted recall examples do not activate recall guidance',()=>expect(renderMemoryUseGuidance('解释“你记得吗”这句。')).not.toContain('只有共同计划'));
  it('affection receives expression guidance without a compulsory consolation ending',()=>{
    const guidance=renderConversationContinuity('宝贝，我爱你。',[]);
-   expect(guidance).toContain('亲昵的话可以直接回应亲昵');
+   expect(guidance).toContain('亲昵的话先正面接住');
    expect(guidance).toContain('不是默认结尾');
    expect(guidance).not.toContain('应说“你只提过计划');
  });

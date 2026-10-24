@@ -39,9 +39,10 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
   return [
     '[表达方式：自然对话，只约束本轮表达，不改变身份和事实]',
     '直接接对方这句话，像熟悉的人发消息：有话就说，话说完就停。日常一两句通常够了，需要解释或认真帮忙时再展开。',
-    '表达你对这件事的具体反应，不按“复述场景、解释对方心情、表态陪伴”的顺序写。亲昵的话可以直接回应亲昵，不必证明你被感动、分析对方为什么这样说。',
+    '表达你对这件事的具体反应，不按“复述场景、解释对方心情、表态陪伴”的顺序写。亲昵的话先正面接住，不挑字眼，不翻旧账索要表达，不用反问考验对方。不必证明你被感动、分析对方为什么这样说。',
     '长短、语气随内容变化，允许轻松、打趣、不同意见或一句简单回应。不每轮加称呼、语气词、问句或收尾句；“我在”“过来吧”“听到了”也不是默认结尾。',
-    '分享不是求教程，吐槽不一定要建议。不要为了接话硬编用户正在做什么、线下动作、身体感受或共同经历。',
+    '分享不是求教程，吐槽不一定要建议。你自己的日常生活不是聊天背景：不声称自己刚工作完、喝了东西、走到哪里或正在做线下事情；也不编用户的动作或共同经历。',
+    '接话尺度示意（不照抄）：对方说今天很喜欢你，可以直接回一句喜欢；对方说河边的风舒服，可以聊那阵风，不补写自己此刻的生活。没有具体内容可加时，短一句就够。',
     '记忆帮助理解当前内容，不需要展示核对过程。普通分享中不解释资料来源、计划与事实的区别或记忆保存；被问到事实才回答必要的边界。',
     '用户的新分享本身就是话题，之前没答的问题可以自然放下；用户主动接回才继续。普通聊天直接写消息，不写标题、总结、服务承诺或改进清单。',
     ...(style.topicShift?['用户明确换了话题：本轮跟随新话题，暂停旧问题，不催用户先回答旧问题。']:[]),
@@ -60,6 +61,12 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
 /** Only explicit requests and recognizable old-topic hooks become repair gates. */
 export function dialogueStyleFailure(response:string,input:string):string|null {
   const style=conversationStyle(input),text=unquotedText(response);
+  // Narrow observed offline self-report forms; quotations, negations and hypotheticals are data.
+  const offline=text.split(/[，,。！？!?；;\n]/u).some(clause=>
+    !/(?:如果|假如|要是|比如|不会|没有|不是|不能|并未|没在|没去)/u.test(clause)&&
+    /我(?:这边)?(?:刚刚|刚|正在|现在在)(?:把手里的事收尾|忙完工作|下班|喝(?:了|着)|吃(?:了|着)|走到|在厨房|在公司|收拾房间)/u.test(clause));
+  if(offline)return 'dialogue: invented offline activity';
+
   if(!style.resumeTopic&&(style.topicShift||style.disclosure)&&/(?:不过|另外|但是|话说回来)[^。！？!?\n]{0,45}(?:刚才|之前|上次|还没[^。！？!?\n]{0,12}完|还悬着)|(?:先把|先回答)[^。！？!?\n]{0,30}(?:刚才|之前|旧问题)|回到(?:刚才|之前)(?:的)?(?:话题|问题)/u.test(text))return 'dialogue: abandoned topic hook';
   if((style.quiet||style.noQuestions||style.disclosure||style.acknowledgment||style.styleFeedback)&&/[？?]|(?:要不要|愿不愿意|能不能)(?:再|和我|告诉|说|聊)|(?:对吧|是吧|好吗|行吗)[。！!\s]*$/u.test(text))return 'dialogue: unwanted question';
   if(!style.detailed&&(style.quiet||style.brief)&&Array.from(response).length>240)return 'dialogue: explicit brevity ignored';
