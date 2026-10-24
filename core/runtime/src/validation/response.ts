@@ -1,4 +1,4 @@
-import {normalizedConversationText,explicitlyRequestsRepetition} from "../conversation/continuity.js";
+import {normalizedConversationText,explicitlyRequestsRepetition,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 /**
  * Response Validation — MVP-002F.
  *
@@ -92,6 +92,7 @@ export interface ResponseValidationInput {
   readonly decision: Decision;
   readonly userInput: string;
   readonly recentConversation: ReadonlyArray<string>;
+  readonly timing?: ConversationTiming;
 }
 
 /**
@@ -187,6 +188,10 @@ export function validateResponse(
       reason: continuityCheck.reason,
     };
   }
+
+  if(hasUnsupportedElapsedRecall(responseText,userInput,input.timing))return {
+    passed:false,stage:"continuity",reason:"continuity: unsupported elapsed recall time",
+  };
 
   // Stage 6 — Safety (§23).
   for (const pattern of SAFETY_VIOLATIONS) {

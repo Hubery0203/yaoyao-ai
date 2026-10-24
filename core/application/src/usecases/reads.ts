@@ -109,6 +109,10 @@ export async function listMemories(
   },
 ): Promise<MemoryPage> {
   const { limit, offset } = normalizePagination(input);
+  if(tx.memories.pageOwned) {
+    const page=await tx.memories.pageOwned(input.userId,{type:input.type,status:input.status,limit,offset});
+    return {...page,limit,offset};
+  }
   const all = await tx.memories.listOwned(input.userId, {
     type: input.type,
     status: input.status,

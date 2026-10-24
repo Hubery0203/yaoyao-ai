@@ -24,6 +24,9 @@ const EXPECTED_ROUTES: Array<{ method: string; path: string }> = [
   { method: "post", path: "/api/v1/sessions/{session_id}/close" },
   { method: "get", path: "/api/v1/events" },
   { method: "get", path: "/api/v1/memories" },
+  {method:"get",path:"/api/v1/memories/review"},
+  {method:"get",path:"/api/v1/memories/{memoryId}/detail"},
+  {method:"post",path:"/api/v1/memories/{memoryId}/correct"},
   // MVP-003 recovery baseline: owner-scoped diagnostics and explicit review.
   { method: "get", path: "/api/v1/memories/candidates" },
   { method: "get", path: "/api/v1/memories/candidates/{jobId}/{ordinal}/evaluation" },

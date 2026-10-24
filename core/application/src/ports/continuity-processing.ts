@@ -11,11 +11,14 @@ export interface ContinuityProcessingStore {
   readRun(userId: UserId, jobId: string): Promise<Record<string,unknown> | null>;
   recordRun(userId: UserId, yaoyaoId: YaoYaoId, jobId: string, result: Record<string,unknown>): Promise<void>;
   findSlot(userId: UserId, yaoyaoId: YaoYaoId, slot: string): Promise<{value:string;memoryId:MemoryId;sourceSequence:number} | null>;
+  /** Optional on legacy adapters; required for direct memory correction. */
+  findSlotByMemory?(userId:UserId,yaoyaoId:YaoYaoId,memoryId:MemoryId):Promise<{slot:string;value:string;sourceSequence:number}|null>;
   setSlot(userId: UserId, yaoyaoId: YaoYaoId, slot: string, value: string, memoryId: MemoryId, sourceSequence:number): Promise<void>;
   supportCount(userId: UserId, yaoyaoId: YaoYaoId, slot: string, value: string): Promise<number>;
   recordCandidate(userId: UserId, yaoyaoId: YaoYaoId, jobId: string, ordinal: number, audit: CandidateAudit): Promise<void>;
   readAudit(userId:UserId,jobId:string,ordinal:number):Promise<{yaoyaoId:YaoYaoId;audit:CandidateAudit;resolution:Record<string,unknown>|null}|null>;
   recordResolution(userId:UserId,yaoyaoId:YaoYaoId,jobId:string,ordinal:number,result:Record<string,unknown>):Promise<void>;
+  reviewPage?(userId:UserId,query:{status:"pending"|"resolved";limit:number;offset:number}):Promise<{rows:Record<string,unknown>[];total:number;pendingTotal:number}>;
   listAudits(userId: UserId, limit: number): Promise<Record<string,unknown>[]>;
   listJobs(userId: UserId, limit: number): Promise<Record<string,unknown>[]>;
   requeue(userId: UserId, jobId: string): Promise<boolean>;

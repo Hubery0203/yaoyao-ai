@@ -28,6 +28,11 @@ export class PostgresContinuityProcessingStore implements ContinuityProcessingSt
       WHERE s.user_id=${userId}::uuid AND s.yaoyao_id=${yaoyaoId}::uuid AND s.slot=${slot} AND m.status='CONSOLIDATED'`);
     return r.rows.length ? {value:String(r.rows[0].value),memoryId:String(r.rows[0].memory_id) as MemoryId,sourceSequence:Number(r.rows[0].source_sequence)}:null;
   }
+  async findSlotByMemory(userId:UserId,yaoyaoId:YaoYaoId,memoryId:MemoryId):Promise<{slot:string;value:string;sourceSequence:number}|null> {
+    const r=await this.db.execute(sql`SELECT slot,value,source_sequence FROM memory_slots
+      WHERE user_id=${userId}::uuid AND yaoyao_id=${yaoyaoId}::uuid AND memory_id=${memoryId}::uuid LIMIT 1`);
+    return r.rows.length?{slot:String(r.rows[0].slot),value:String(r.rows[0].value),sourceSequence:Number(r.rows[0].source_sequence)}:null;
+  }
   async setSlot(userId:UserId,yaoyaoId:YaoYaoId,slot:string,value:string,memoryId:MemoryId,sourceSequence:number):Promise<void> {
     await this.db.execute(sql`INSERT INTO memory_slots(user_id,yaoyao_id,slot,value,memory_id,source_sequence)
       VALUES(${userId}::uuid,${yaoyaoId}::uuid,${slot},${value},${memoryId}::uuid,${sourceSequence})
@@ -54,6 +59,18 @@ export class PostgresContinuityProcessingStore implements ContinuityProcessingSt
   async recordResolution(userId:UserId,yaoyaoId:YaoYaoId,jobId:string,ordinal:number,result:Record<string,unknown>):Promise<void> {
     await this.db.execute(sql`INSERT INTO memory_candidate_resolutions(user_id,yaoyao_id,job_id,ordinal,result)
       VALUES(${userId}::uuid,${yaoyaoId}::uuid,${jobId}::uuid,${ordinal},${JSON.stringify(result)}::jsonb)`);
+  }
+  async reviewPage(userId:UserId,query:{status:"pending"|"resolved";limit:number;offset:number}):Promise<{rows:Record<string,unknown>[];total:number;pendingTotal:number}> {
+    const resolution=query.status==="pending"?sql`r.job_id IS NULL`:sql`r.job_id IS NOT NULL`;
+    const rows=await this.db.execute(sql`SELECT a.job_id,a.ordinal,a.audit,a.created_at,r.result AS resolution FROM memory_candidate_audits a
+      LEFT JOIN memory_candidate_resolutions r ON r.job_id=a.job_id AND r.ordinal=a.ordinal AND r.user_id=a.user_id
+      WHERE a.user_id=${userId}::uuid AND a.audit->>'outcome'='held' AND ${resolution}
+      ORDER BY a.created_at DESC,a.job_id,a.ordinal LIMIT ${query.limit} OFFSET ${query.offset}`);
+    const totals=await this.db.execute(sql`SELECT count(*) FILTER (WHERE ${resolution})::int AS total,
+      count(*) FILTER (WHERE r.job_id IS NULL)::int AS pending FROM memory_candidate_audits a
+      LEFT JOIN memory_candidate_resolutions r ON r.job_id=a.job_id AND r.ordinal=a.ordinal AND r.user_id=a.user_id
+      WHERE a.user_id=${userId}::uuid AND a.audit->>'outcome'='held'`);
+    return {rows:rows.rows,total:Number(totals.rows[0].total),pendingTotal:Number(totals.rows[0].pending)};
   }
   async listAudits(userId:UserId,limit:number):Promise<Record<string,unknown>[]> {
     const r=await this.db.execute(sql`SELECT a.job_id,a.ordinal,a.audit,a.created_at,r.result AS resolution FROM memory_candidate_audits a

@@ -179,11 +179,15 @@ export interface ClientMemory {
   createdAt: string;
   updatedAt: string;
   lastRecalledAt: string | null;
+  version: number;
+  supersedes: string | null;
 }
 
 export function projectMemory(memory: Memory): ClientMemory {
   return {
     memoryId: memory.memoryId as string,
+    version: memory.version,
+    supersedes: memory.supersedes,
     type: memory.type,
     content: memory.content,
     importance: memory.importance,
