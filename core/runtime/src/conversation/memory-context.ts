@@ -58,7 +58,12 @@ export function hasUnsupportedPlanOutcome(response:string,input:string,recent:re
   if(!/[？?]|去过|完成|发生/u.test(input))return false;
   const users=recent.filter(t=>t.startsWith('User: ')).map(t=>t.slice(6));
   const destinations=users.flatMap(t=>{const m=t.trim().match(/^我们(?:计划|约好|决定)去([^，,。！？!?]{1,40})[。！!]?$/u);return m?[m[1]]:[];});
-  const relevant=destinations.filter(d=>input.includes(d)&&!users.some(t=>t.includes(d)&&/(?:已经去|去过|回来|没去成|取消了)/u.test(t)));
+  const relevant=destinations.filter(d=>input.includes(d)&&!users.some(t=>{
+    const literal=t.trim().replace(/[。！!]+$/u,'');
+    // A previous "我们去过 X 吗？" is a question, never completion evidence.
+    // Only literal owner assertions can establish an outcome here.
+    return ['我们去过','我们已经去过','我们去了','我们已经去了','我们还没有去过','我们没去过'].some(prefix=>literal===prefix+d||literal===prefix+d+'了');
+  }));
   if(!relevant.length)return false;
   return response.replace(/“[^”]*”|「[^」]*」|"[^"\n]*"/gu,'').split(/[，,。！？!?；;\n]/u).some(c=>{
     const clause=c.trim();
