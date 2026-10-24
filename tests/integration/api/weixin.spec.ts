@@ -1,6 +1,7 @@
+import {runContinuityOnce} from "@yaoyao/application";
 import {APP_PASSWORD} from "../postgres/helpers.js";
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
-import {WeixinStore,type IncomingText} from '@yaoyao/infrastructure';
+import {WeixinStore,PostgresTransactionManager,type IncomingText} from '@yaoyao/infrastructure';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator} from '@yaoyao/runtime';
 import type {UserId} from '@yaoyao/domain';
 import {processWeixinMessage} from '../../../apps/api/src/weixin-bridge.service.js';
@@ -41,7 +42,7 @@ describe.skipIf(!docker)('W2/W3 real PostgreSQL and authenticated API',()=>{
   await store.update(msg('1').key,'accepted');
  });
  it('atomically deduplicates batch and cursor',async()=>{
-  await store.ingest([msg('2'),msg('2')],'cursor-two');
+  await store.ingest([msg('2','我喜欢喝桂花乌龙茶。'),msg('2','我喜欢喝桂花乌龙茶。')],'cursor-two');
   const r=await ctx.db.adminPool.query('SELECT count(*)::int n FROM weixin_messages WHERE message_key=$1',[msg('2').key]);expect(r.rows[0].n).toBe(1);expect((await store.channel()).cursor).toBe('cursor-two');
  });
  it('uses same Core owner and request key; webhook retry never duplicates web history',async()=>{
@@ -51,6 +52,12 @@ describe.skipIf(!docker)('W2/W3 real PostgreSQL and authenticated API',()=>{
   await converse(row.user_id,row.text,'weixin-'+row.message_key);
   const history=await ctx.http.get('/api/v1/conversations/messages').set(authHeader(me.accessToken));expect(history.body.data.messages).toHaveLength(2);expect(history.body.data.messages[0].requestId).toBe('weixin-'+row.message_key);
   expect((await ctx.http.get('/api/v1/conversations/messages').set(authHeader(other.accessToken))).body.data.messages).toHaveLength(0);
+ });
+ it('Weixin facts consolidate into the same website memory',async()=>{
+  expect(await runContinuityOnce(new PostgresTransactionManager(ctx.db.appPool),me.userId as UserId)).toBe('completed');
+  const memory=await ctx.http.get('/api/v1/memories?limit=100').set(authHeader(me.accessToken));
+  expect(memory.body.data.memories.some((m:{content:string})=>m.content.includes('桂花乌龙茶'))).toBe(true);
+  const hidden=await ctx.http.get('/api/v1/memories?limit=100').set(authHeader(other.accessToken));expect(hidden.body.data.memories).toHaveLength(0);
  });
  it('owner pause persists and validation rejects arbitrary controls',async()=>{
   expect((await ctx.http.post('/api/v1/weixin/control').set(authHeader(me.accessToken)).send({action:'pause'})).status).toBe(200);expect((await store.channel()).paused).toBe(true);
@@ -67,6 +74,13 @@ describe.skipIf(!docker)('W2/W3 real PostgreSQL and authenticated API',()=>{
   await store.close();store=new WeixinStore(ctx.db.appPool,c,ctx.db.connectionStringFor('yaoyao_app',APP_PASSWORD));await store.open();
   expect((await store.next())?.stage).toBe('uncertain');expect((await store.channel()).cursor).toBe('cursor-restart');
   const r=await ctx.db.adminPool.query('SELECT stage FROM weixin_messages WHERE message_key=$1',[msg('4').key]);expect(r.rows[0].stage).toBe('pending');
+ });
+ it('never hides an old blocking uncertain delivery behind recent accepted messages',async()=>{
+  await store.ingest(Array.from({length:35},(_,i)=>msg(String(300+i))),'cursor-recent');
+  for(let i=0;i<35;i++)await store.update(msg(String(300+i)).key,'accepted');
+  const status=await ctx.http.get('/api/v1/weixin').set(authHeader(me.accessToken));
+  expect(status.body.data.deliveries.some((d:{key:string;stage:string})=>d.key===msg('3').key&&d.stage==='uncertain')).toBe(true);
+  const json=JSON.stringify(status.body);expect(json).not.toContain('private-context');expect(json).not.toContain(c.ownerId);expect(json).not.toContain(c.token);
  });
  it('only owner explicitly resolves uncertain send; retry reuses saved reply',async()=>{
   const path='/api/v1/weixin/deliveries/'+msg('3').key+'/resolve';

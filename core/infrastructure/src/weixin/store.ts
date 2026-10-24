@@ -58,7 +58,7 @@ export class WeixinStore {
  async status(userId:string):Promise<unknown>{return this.tx(async db=>{
   const c=(await db.query('SELECT user_id,paused,auth_expired,last_error,cutoff_ms,updated_at FROM weixin_channels WHERE bot_id=$1',[this.credentials.botId])).rows[0];
   if(c.user_id!==userId)return {enabled:true,bound:false,available:!c.user_id};
-  const {rows}=await db.query("SELECT message_key AS key,stage,attempts,last_error AS error,ack_level AS acknowledgement,created_at,updated_at FROM weixin_messages WHERE bot_id=$1 AND user_id=$2 ORDER BY ordinal DESC LIMIT 30",[this.credentials.botId,userId]);
+  const {rows}=await db.query("SELECT message_key AS key,stage,attempts,last_error AS error,ack_level AS acknowledgement,created_at,updated_at FROM weixin_messages WHERE bot_id=$1 AND user_id=$2 ORDER BY (stage IN ('uncertain','failed')) DESC,ordinal DESC LIMIT 30",[this.credentials.botId,userId]);
   return {enabled:true,bound:true,paused:c.paused,authExpired:c.auth_expired,error:c.last_error,since:new Date(Number(c.cutoff_ms)).toISOString(),deliveries:rows};
  });}
  async bindingCode(userId:string):Promise<{code:string;expiresAt:string}>{

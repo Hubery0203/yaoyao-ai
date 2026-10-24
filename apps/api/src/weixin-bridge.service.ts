@@ -63,6 +63,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinChannelPort {
   while(!this.stopped&&store.healthy){
    try{
     const c=await store.channel();
+    if(c.user_id)this.gate.registerOwner(c.user_id);
     if(c.paused||c.auth_expired){await sleep(1000);continue;}
     const row=await store.next();
     if(row&&!['uncertain','failed'].includes(row.stage)&&new Date(row.retry_at).getTime()<=Date.now()){
