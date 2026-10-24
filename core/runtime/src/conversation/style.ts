@@ -61,7 +61,7 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
 export function dialogueStyleFailure(response:string,input:string):string|null {
   const style=conversationStyle(input),text=unquotedText(response);
   if(!style.resumeTopic&&(style.topicShift||style.disclosure)&&/(?:不过|另外|但是|话说回来)[^。！？!?\n]{0,45}(?:刚才|之前|上次|还没[^。！？!?\n]{0,12}完|还悬着)|(?:先把|先回答)[^。！？!?\n]{0,30}(?:刚才|之前|旧问题)|回到(?:刚才|之前)(?:的)?(?:话题|问题)/u.test(text))return 'dialogue: abandoned topic hook';
-  if((style.quiet||style.noQuestions||style.disclosure||style.acknowledgment||style.styleFeedback)&&/[？?]|(?:要不要|愿不愿意|能不能)(?:再|和我|告诉|说|聊)/u.test(text))return 'dialogue: unwanted question';
+  if((style.quiet||style.noQuestions||style.disclosure||style.acknowledgment||style.styleFeedback)&&/[？?]|(?:要不要|愿不愿意|能不能)(?:再|和我|告诉|说|聊)|(?:对吧|是吧|好吗|行吗)[。！!\s]*$/u.test(text))return 'dialogue: unwanted question';
   if(!style.detailed&&(style.quiet||style.brief)&&Array.from(response).length>240)return 'dialogue: explicit brevity ignored';
   return null;
 }

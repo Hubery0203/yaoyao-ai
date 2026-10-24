@@ -60,7 +60,14 @@ export function hasUnsupportedPlanOutcome(response:string,input:string,recent:re
   const destinations=users.flatMap(t=>{const m=t.trim().match(/^我们(?:计划|约好|决定)去([^，,。！？!?]{1,40})[。！!]?$/u);return m?[m[1]]:[];});
   const relevant=destinations.filter(d=>input.includes(d)&&!users.some(t=>t.includes(d)&&/(?:已经去|去过|回来|没去成|取消了)/u.test(t)));
   if(!relevant.length)return false;
-  return response.replace(/“[^”]*”|「[^」]*」|"[^"\n]*"/gu,'').split(/[，,。！？!?；;\n]/u).some(c=>!/(?:记录|没说|没提|不确定|不知道|不能确定|是否)/u.test(c)&&/(?:^|我们|你们)(?:还没有|还没去|没去过|没有去过|已经去过|已经去了|去过了)/u.test(c.trim()));
+  return response.replace(/“[^”]*”|「[^」]*」|"[^"\n]*"/gu,'').split(/[，,。！？!?；;\n]/u).some(c=>{
+    const clause=c.trim();
+    if(/(?:记录|没说|没提|没告诉|不确定|不知道|不能确定|是否)/u.test(clause))return false;
+    // A bare yes/no answers the travel question too; a later evidence caveat
+    // does not make that initial assertion grounded.
+    if(/^(?:还)?(?:没有|没|还没|是的|是|有|去过|去了|去过了|没去过|没去)(?:呀|啊|呢|哦|啦|了)?$/u.test(clause))return true;
+    return /(?:还没有|还没去|没去过|没有去过|已经去过|已经去了|去过了|确实去过|当然去过)/u.test(clause);
+  });
 }
 
 /** A read-only projection: fresh literal evidence wins for this reply, including before background consolidation. */
