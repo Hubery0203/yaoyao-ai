@@ -53,6 +53,8 @@ import { AIRouter } from "../router/router.js";
 import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 import {renderConversationContinuity} from "./continuity.js";
+import {conversationStyle} from './style.js';
+import {projectTurnMemories,focusDisclosureHistory} from './memory-context.js';
 import {validationFailureSummary} from "./quality.js";
 import { classifySituation } from "./situation.js";
 
@@ -222,7 +224,8 @@ export class ConversationOrchestrator {
     // MVP-002D: retrieve relevant memories. The yaoyaoId is server-resolved
     // from PersonaData (§VIII) — never trusted from client input.
     const memoryRetrieval = this.deps.memoryRetrieval ?? new EmptyMemoryRetrieval();
-    const memoryContext = await memoryRetrieval.retrieve({
+    const style=conversationStyle(input.text);
+    const retrievedMemoryContext = await memoryRetrieval.retrieve({
       userId: input.userId as UserId,
       yaoyaoId: personaData.yaoyao.yaoyaoId as YaoYaoId,
       currentInput: input.text,
@@ -235,15 +238,16 @@ export class ConversationOrchestrator {
         type: personaData.relationship.type,
         status: personaData.relationship.status,
       },
-      recentConversation: recentConversationTexts.slice(-6),
+      recentConversation: style.topicShift?[]:recentConversationTexts.slice(-6),
       limit: 50,
       traceId: input.traceId,
     });
+    const memoryContext=projectTurnMemories(retrievedMemoryContext,input.text,recentConversationTexts);
     const assembled = this.assembler.assemble({
       data: personaData,
       inputText: input.text,
       memoryContext,
-      conversationHistory,
+      conversationHistory:focusDisclosureHistory(input.text,conversationHistory),
     });
     (trace as { context?: unknown }).context = {
       layersIncluded: [...assembled.promptContext.layersIncluded],
@@ -316,7 +320,7 @@ export class ConversationOrchestrator {
       outputSchemaName: "llm-output-contract-v1",
       timeoutMs: Math.min(30000,Math.max(1,modelDeadline-Date.now())),
       metadata: {
-        runtimeVersion: "mvp-006d",
+        runtimeVersion: "mvp-006ef",
         contextVersion: "c0-c7-v1",
         requestId: input.traceId,
       },
@@ -390,6 +394,7 @@ export class ConversationOrchestrator {
       finalResponse = buildFallbackResponse({
         userInput: input.text,
         decision,
+        recentConversation:recentConversationTexts,
       });
     }
     (trace as { validation?: unknown }).validation = {

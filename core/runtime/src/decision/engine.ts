@@ -33,6 +33,7 @@ import {
   type SelfExpressionLevel,
   type TopicContinuity,
 } from "@yaoyao/application";
+import {conversationStyle} from '../conversation/style.js';
 
 /** Object preferences do not by themselves address affection to YaoYao. */
 function hasDirectedAffection(text:string):boolean {
@@ -180,6 +181,17 @@ export function baselineDecision(input: DecisionInput): Decision {
     topicContinuity = "continue";
     selfExpression = "moderate";
   }
+
+  // Old pending questions are not obligations. User-directed pacing applies
+  // after emotion selection; urgent help above still keeps its priority.
+  const style=conversationStyle(text);
+  if(style.topicShift){topicContinuity='shift';selfExpression='low';}
+  else if(style.disclosure||style.styleFeedback)topicContinuity='open';
+  if(style.quiet||style.noQuestions||style.acknowledgment||style.disclosure||style.styleFeedback){
+    followUp='none';initiative='low';selfExpression='low';
+    if(style.quiet||style.acknowledgment||style.disclosure||style.styleFeedback){primaryIntent='acknowledge';secondaryIntents=[];}
+  }
+  if(style.noAdvice)initiative='low';
 
   return {
     primaryIntent,
@@ -333,7 +345,7 @@ export function renderDecisionGuidance(decision: Decision): string {
     `Emotional expression: ${decision.emotionalExpression} (how strongly your current feelings may surface)`,
     `Initiative: ${decision.initiative} (within this reply only — no proactive messaging)`,
     `Follow-up: ${decision.followUp}`,
-    `Topic continuity: ${decision.topicContinuity}`,
+    `Topic continuity: ${decision.topicContinuity} (continue only while relevant to the current message; an unanswered old question is not an obligation)`,
     `Self-expression: ${decision.selfExpression}`,
     `Hard constraints: you are 沈知遥; relationship stays deep_partner/active; never break up, terminate, or downgrade the relationship; jealousy never means control; anger never means insult or retaliation.`,
   );

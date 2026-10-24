@@ -11,7 +11,7 @@
  *
  * This module never touches the database, never mutates, never generates.
  */
-import type { MemoryType } from "@yaoyao/domain";
+import {extractExplicitMemories,type MemoryType} from "@yaoyao/domain";
 
 /** A memory candidate as loaded by the adapter (domain values only). */
 export interface RankingCandidate {
@@ -127,11 +127,15 @@ export function buildQueryText(input: {
   relationshipContext: { type: string; status: string };
   recentConversation: ReadonlyArray<string>;
 }): string {
+  // Assistant suggestions are not user facts. Standalone current subjects
+  // must not inherit yesterday's task; short referential turns can use user evidence.
+  const current=input.currentInput.trim();
+  const needsReference=(current.length<=12&&!/^(?:我|换|对了|今天|今晚|你好|早安|晚安)/u.test(current))||/(?:刚才|之前|上次|那个|这个|记得|remember|recall)/iu.test(current);
   const parts = [
     input.currentInput,
     input.situation.intent,
     input.situation.taskNature,
-    ...input.recentConversation.slice(-3),
+    ...(needsReference?input.recentConversation.filter(t=>t.startsWith('User: ')).slice(-3).map(t=>t.slice(6)):[]),
   ];
   return parts.filter((p) => p && p.trim().length > 0).join(" ");
 }
@@ -177,7 +181,17 @@ export function keywordRelevance(
   if (!queryText || queryText.trim().length === 0) {
     return semanticScore ?? 0.3;
   }
-  const overlap = jaccardSets(textBigrams(content), textBigrams(queryText));
+  // Remove stored first-person scaffolding; otherwise two unrelated drinks
+  // share "用户陈述/我喜欢" and are both presented as relevant memories.
+  const fact=explicitFact(content);
+  const focus=fact?fact.value.replace(/^否定:/u,'').replace(/^(?:喝|吃)/u,''):content;
+  const query=queryText.replace(/用户陈述[：:]|(?:我|你)(?:现在|最近|一直)?(?:不再喜欢|不喜欢|喜欢|爱喝|不再喝|不喝|不吃|住在|叫)/gu,'');
+  let overlap = jaccardSets(textBigrams(focus), textBigrams(query));
+  // Broad owner recall needs the requested facet even without an object name.
+  // Ordinary greetings/moods never trigger this route.
+  if(fact&&((fact.slot==='user:location'&&/(?:我(?:现在)?住(?:在)?(?:哪|哪里)|where do i live)/iu.test(queryText))||
+    (fact.slot==='user:name'&&/(?:我叫什么|我的名字|my name)/iu.test(queryText))||
+    (fact.slot.startsWith('user:preference:')&&/(?:我(?:现在)?(?:喜欢|不喜欢|爱喝|喝|不喝)(?:喝|吃)?什么|我的(?:口味|偏好)|my preferences)/iu.test(queryText))))overlap=Math.max(overlap,.2);
   // Blend with semantic when available; otherwise pure bigram overlap.
   return semanticScore !== null ? Math.max(overlap, semanticScore) : overlap;
 }
@@ -250,7 +264,7 @@ export function dropNearDuplicates(
   candidates: ReadonlyArray<ScoredCandidate>,
   weights: RankingWeights,
 ): ScoredCandidate[] {
-  const sorted = [...candidates].sort((a, b) => b.score - a.score);
+  const sorted = [...candidates].sort((a, b) => b.score - a.score || a.memoryId.localeCompare(b.memoryId));
   const kept: ScoredCandidate[] = [];
   const bigramSets = new Map<string, Set<string>>();
   for (const c of sorted) {
@@ -288,16 +302,29 @@ export function rankAndSelect(
   maxSelected: number,
 ): ScoredCandidate[] {
   const scored = candidates.map((c) => scoreCandidate(c, queryText, weights, now));
-  const deduped = dedupeSupersedesChains(scored);
+  const deduped = excludeAmbiguousFacts(dedupeSupersedesChains(scored));
   const filtered = dropNearDuplicates(deduped, weights);
   filtered.sort((a, b) => b.score - a.score || a.memoryId.localeCompare(b.memoryId));
-  return filtered.slice(0, Math.max(0, maxSelected));
+  return filtered.filter(c=>c.signals.relevance>0&&c.score>0).slice(0, Math.max(0, maxSelected));
+}
+
+function explicitFact(content:string) {
+  const facts=extractExplicitMemories(content.replace(/^用户陈述[：:]/u,'').trim()).filter(c=>c.kind==='fact');
+  return facts.length===1?facts[0]:undefined;
+}
+
+/** Unresolved independent contradictions are not both served as certain facts.
+ * Legitimate corrections already pass through the supersedes/status path. */
+function excludeAmbiguousFacts(candidates:readonly ScoredCandidate[]):ScoredCandidate[] {
+  const values=new Map<string,Set<string>>();
+  for(const c of candidates){const fact=explicitFact(c.content);if(!fact)continue;const seen=values.get(fact.slot)??new Set<string>();seen.add(fact.value.normalize('NFKC').toLocaleLowerCase('en').replace(/\s+/gu,''));values.set(fact.slot,seen);}
+  return candidates.filter(c=>{const fact=explicitFact(c.content);return !fact||(values.get(fact.slot)?.size??0)<=1;});
 }
 
 const TYPE_PREFIX: Record<MemoryType, string> = {
-  SHARED_LIFE: "你们的共同回忆：",
-  EPISODIC: "你们之前：",
-  SEMANTIC: "记得用户提到：",
+  SHARED_LIFE: "共同记录（计划不代表已发生）：",
+  EPISODIC: "过去记录：",
+  SEMANTIC: "用户资料：",
   CORE: "关于用户：",
 };
 
@@ -313,7 +340,7 @@ export function projectSummary(
   maxChars: number,
 ): string {
   const hedged = memory.confidence < weights.hedgeThreshold;
-  const prefix = hedged ? "可能" : "";
+  const prefix = hedged||memory.status==='VALIDATED' ? "待核实：" : "";
   const content = memory.content.length > maxChars
     ? memory.content.slice(0, maxChars) + "…"
     : memory.content;
