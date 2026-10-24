@@ -37,7 +37,7 @@ function renderMemories(){
    const b=node('button','查看原话与纠正历史','secondary');b.onclick=()=>openMemory(row.memoryId);card.append(b);
   }else{
    const resolved=!!row.resolution;
-   card.append(node('span',resolved?(row.resolution.decision==='confirm'?'已确认':'已放弃'):'待确认 · 尚非事实','tag'),node('p',row.audit.candidate.content),node('blockquote','原话：'+row.audit.candidate.evidence),node('small',displayTime(row.created_at)),node('p',heldReasons[row.audit.reason]||'需要你确认后再处理。','memory-help'));
+   card.append(node('span',resolved?(row.resolution.decision==='confirm'?'已确认':'已放弃'):'待确认 · 尚非事实','tag'),node('p',row.audit.candidate.content),node('blockquote','原话：'+row.audit.candidate.evidence),node('small',displayTime(row.created_at)),node('p',resolved?(row.resolution.decision==='confirm'?'你已确认这条候选，来源与处理记录已保留。':'这条候选未被记为事实，原话与放弃记录已保留。'):(heldReasons[row.audit.reason]||'需要你确认后再处理。'),'memory-help'));
    const actions=node('div',undefined,'actions');
    if(resolved&&row.resolution.memoryId){const b=node('button','查看确认后的记忆','secondary');b.onclick=()=>openMemory(row.resolution.memoryId);actions.append(b);}
    if(!resolved)for(const [decision,label]of [['confirm','确认记住'],['discard','放弃这条']]){
@@ -83,6 +83,7 @@ async function openMemory(memoryId){
   if(data.historyTruncated)box.append(node('p','这里只展示最近 20 个旧版本，可点开最早的一条继续查看。'));
   $('#memory-correction').classList.toggle('hidden',!data.canCorrect);
   $('#correction-text').value='';$('#correction-text').disabled=false;$('#correction-submit').disabled=false;
+  $('#close-memory-detail').focus({preventScroll:true});$('#memory-detail').scrollTop=0;
   if(!data.canCorrect)box.append(node('p',data.memory.status==='CONSOLIDATED'?'这条记忆暂不支持直接纠正；可以在聊天中说明变化。':'旧版本只供回看，请从当前记忆提交纠正。','memory-help'));
  }catch(e){if(request===state.detailRequest)$('#memory-detail-body').replaceChildren(node('p',errorText(e),'error'));}
 }
