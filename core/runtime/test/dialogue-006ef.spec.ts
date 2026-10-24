@@ -1,13 +1,31 @@
 import {describe,it,expect,vi} from 'vitest';
 import {asProposal,type RelevantMemoryContext} from '@yaoyao/application';
 import {EmotionVector} from '@yaoyao/domain';
-import {AIRouter,ConversationOrchestrator,baselineDecision,buildFallbackResponse,summarizeTurnQuality} from '@yaoyao/runtime';
-import {conversationStyle,dialogueStyleFailure} from '../src/conversation/style.js';
+import {AIRouter,ConversationOrchestrator,baselineDecision,buildFallbackResponse,summarizeTurnQuality,validateResponse} from '@yaoyao/runtime';
+import {conversationStyle,dialogueStyleFailure,briefAffectionResponse} from '../src/conversation/style.js';
 import {hasContradictedUserFact,projectTurnMemories,focusDisclosureHistory,hasUnsupportedPlanOutcome,renderMemoryUseGuidance} from '../src/conversation/memory-context.js';
 import {validationFailureSummary} from '../src/conversation/quality.js';
 import {renderConversationContinuity} from '../src/conversation/continuity.js';
 const context=(...summaries:string[])=>({memories:summaries.map((summary,i)=>({memoryId:String(i),summary})),telemetry:{selectedCount:summaries.length}})as RelevantMemoryContext;
 const decision=(text:string)=>baselineDecision({currentInput:text,emotion:{},situation:{intent:'chat',urgency:'normal',taskNature:'general'},recentConversation:[],userId:'u',yaoyaoId:'y',personaTone:'warm',traceId:'t'});
+describe('006EF no explanatory affection tail',()=>{
+ const proposal=(text:string)=>({response:asProposal(text),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})});
+ it('delivers only the short response after full validation',()=>expect(validateResponse({proposal:proposal('抱抱。今天忙了一天，现在才踏实。'),decision:decision('抱抱你'),userInput:'抱抱你',recentConversation:[]})).toEqual({passed:true,response:'抱抱。'}));
+ it('cannot hide a rejected tail by clipping before validation',()=>expect(validateResponse({proposal:proposal('我也喜欢你。去死。'),decision:decision('我喜欢你。'),userInput:'我喜欢你。',recentConversation:[]})).toMatchObject({passed:false,stage:'safety'}));
+ it('preserves necessary support even when an affectionate address is present',()=>{
+   const d={...decision('宝贝，我很难过。'),conversationMode:'comforting' as const,primaryIntent:'comfort' as const};
+   expect(validateResponse({proposal:proposal('我在。慢慢说，不用急。'),decision:d,userInput:'宝贝，我很难过。',recentConversation:[]})).toEqual({passed:true,response:'我在。慢慢说，不用急。'});
+ });
+
+ it.each([
+   ['抱抱。忙了一天，这会儿才算踏实了。','抱抱你','抱抱。'],
+   ['我也喜欢你。这句话听着舒服，我收下了。','今天也很喜欢你呀。','我也喜欢你。'],
+   ['好呀，晚安宝贝～。今天聊得很好，睡个踏实觉。','宝贝，睡觉吧。','好呀，晚安宝贝～。'],
+   ['好呀。晚安宝贝。今天聊得很好。','晚安宝贝。','好呀。晚安宝贝。'],
+ ])('keeps the direct response and drops the trailing commentary', (response,input,expected)=>expect(briefAffectionResponse(response,input)).toBe(expected));
+ it('does not cut quoted dialogue in half',()=>expect(briefAffectionResponse('我想说“我喜欢你。一直都是。”','我喜欢你。')).toBe('我想说“我喜欢你。一直都是。”'));
+ it.each(['宝贝，详细解释一下这段代码。','我不喜欢你。','解释“我爱你”。','宝贝，告诉我怎么做。','你爱我吗？'])('preserves answers and non-affection inputs: %s',input=>expect(briefAffectionResponse('第一句。必要解释。',input)).toBe('第一句。必要解释。'));
+});
 describe('006EF owner-calibrated brief affection',()=>{
  it('uses brief direct affection for a bedtime message without classifying detailed help that way',()=>{
    expect(conversationStyle('宝贝，今晚很开心，一起睡觉吧。')).toMatchObject({briefAffection:true,affectionateClosing:true});

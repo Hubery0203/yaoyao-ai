@@ -80,3 +80,19 @@ export function dialogueStyleFailure(response:string,input:string):string|null {
   if(!style.detailed&&(style.quiet||style.brief)&&Array.from(response).length>240)return 'dialogue: explicit brevity ignored';
   return null;
 }
+
+
+/** Display projection after full validation; never changes persisted user input or model signals. */
+export function briefAffectionResponse(response:string,input:string):string {
+  const style=conversationStyle(input);
+  if(!style.briefAffection||/[？?]|告诉我|建议|要不要|应该|能不能|怎么样|去过/u.test(unquotedText(input)))return response;
+  // Do not cut through quoted dialogue or examples.
+  if(/[“”「」『』"]/u.test(response))return response;
+  const sentences=response.trim().match(/[^。！？!?\n]+[。！？!?]?/gu)??[];
+  const first=sentences[0]?.trim();
+  if(!first)return response;
+  const next=sentences[1]?.trim();
+  // Keep a short direct goodnight/affection after a bare interjection, not its commentary.
+  if(/^(?:嗯+|好[呀啊的呢]?|哦+)[。！!]?$/u.test(first)&&next&&Array.from(next).length<=24&&/(?:晚安|宝贝|爱你|喜欢你|想你|抱抱|亲亲)/u.test(next)&&!/(?:这句|听着|让我|觉得|所以|才算)/u.test(next))return first+next;
+  return first;
+}

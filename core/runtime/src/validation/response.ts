@@ -1,5 +1,5 @@
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
-import {conversationStyle,dialogueStyleFailure} from '../conversation/style.js';
+import {conversationStyle,dialogueStyleFailure,briefAffectionResponse} from '../conversation/style.js';
 import {hasContradictedUserFact,hasUnsupportedPlanOutcome} from '../conversation/memory-context.js';
 /**
  * Response Validation — MVP-002F.
@@ -228,7 +228,7 @@ export function validateResponse(
     };
   }
 
-  return { passed: true, response: responseText };
+  return { passed: true, response: ['normal','intimate'].includes(decision.conversationMode)&&['express_affection','acknowledge'].includes(decision.primaryIntent)?briefAffectionResponse(responseText,userInput):responseText };
 }
 
 /**
