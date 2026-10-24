@@ -57,7 +57,7 @@ export class WeixinStore {
  async error(code:string,auth=false):Promise<void>{await this.tx(async db=>{await db.query('UPDATE weixin_channels SET last_error=$2,auth_expired=auth_expired OR $3 WHERE bot_id=$1',[this.credentials.botId,code,auth]);});}
  async status(userId:string):Promise<unknown>{return this.tx(async db=>{
   const c=(await db.query('SELECT user_id,paused,auth_expired,last_error,cutoff_ms,updated_at FROM weixin_channels WHERE bot_id=$1',[this.credentials.botId])).rows[0];
-  if(c.user_id!==userId)return {enabled:true,bound:false,available:!c.user_id};
+  if(c.user_id!==userId)return c.user_id?{enabled:true,bound:false,available:false}:{enabled:true,bound:false,available:true,authExpired:c.auth_expired,error:c.last_error};
   const {rows}=await db.query("SELECT message_key AS key,stage,attempts,last_error AS error,ack_level AS acknowledgement,created_at,updated_at FROM weixin_messages WHERE bot_id=$1 AND user_id=$2 ORDER BY (stage IN ('uncertain','failed')) DESC,ordinal DESC LIMIT 30",[this.credentials.botId,userId]);
   return {enabled:true,bound:true,paused:c.paused,authExpired:c.auth_expired,error:c.last_error,since:new Date(Number(c.cutoff_ms)).toISOString(),deliveries:rows};
  });}

@@ -28,6 +28,11 @@ describe.skipIf(!docker)('W2/W3 real PostgreSQL and authenticated API',()=>{
   const {code}=await store.bindingCode(me.userId);await store.ingest([msg('old','绑定 '+code,1),msg('unbound')],'cursor-initial');
   expect((await store.channel()).user_id).toBeNull();expect(await store.next()).toBeUndefined();expect((await store.channel()).cursor).toBe('cursor-initial');
  });
+ it('exposes expired authorization before binding so onboarding cannot silently hang',async()=>{
+  await store.error('AUTH_EXPIRED',true);
+  const status=await ctx.http.get('/api/v1/weixin').set(authHeader(me.accessToken));expect(status.body.data.authExpired).toBe(true);expect(status.body.data.bound).toBe(false);
+  await store.tx(async db=>{await db.query('UPDATE weixin_channels SET auth_expired=false,last_error=NULL WHERE bot_id=$1',[c.botId]);});
+ });
  it('hashes and expires codes, only authenticated account can generate',async()=>{
   const res=await ctx.http.post('/api/v1/weixin/binding-code').set(authHeader(me.accessToken));expect(res.status).toBe(200);expect(res.body.data.code).toMatch(/^[A-F0-9]{16}$/);
   const hashes=await ctx.db.adminPool.query('SELECT code_hash FROM weixin_binding_codes');expect(hashes.rows.some(r=>r.code_hash===res.body.data.code)).toBe(false);

@@ -113,8 +113,8 @@ $('#compose-hint').textContent=prefs.enter?'Enter 发送 · Shift + Enter 换行
 async function loadWeixin(){
  if(!requireLogin())return;
  const {data}=await api('/weixin');
- $('#weixin-state').textContent=!data.enabled?'微信通道尚未启用。':!data.bound?(data.available?'尚未绑定：生成绑定码后，在微信 ClawBot 发送下方指令。':'此微信通道已绑定其他账号。'):data.authExpired?'微信授权已失效，需要重新扫码。':data.paused?'已暂停。恢复后继续处理排队消息。':data.error?'通道等待恢复：'+data.error:'已绑定，正在接收新消息。';
- $('#weixin-bind').hidden=!data.enabled||!data.available||data.bound;
+ $('#weixin-state').textContent=!data.enabled?'微信通道尚未启用。':data.authExpired?'微信授权已失效，需要重新扫码。':!data.bound?(data.available?'尚未绑定：生成绑定码后，在微信 ClawBot 发送下方指令。':'此微信通道已绑定其他账号。'):data.paused?'已暂停。恢复后继续处理排队消息。':data.error?'通道等待恢复：'+data.error:'已绑定，正在接收新消息。';
+ $('#weixin-bind').hidden=!data.enabled||!data.available||data.bound||data.authExpired;
  $('#weixin-toggle').hidden=!data.bound;$('#weixin-toggle').textContent=data.paused?'恢复':'暂停';
  $('#weixin-toggle').onclick=()=>weixinAction('/control',{action:data.paused?'resume':'pause'});
  if(data.bound)$('#weixin-code').textContent='';
