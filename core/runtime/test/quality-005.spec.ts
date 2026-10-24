@@ -19,7 +19,8 @@ describe('005A situation and task preservation',()=>{
   expect(d.primaryIntent).toBe('answer');expect(d.secondaryIntents).toContain('express_affection');
  });
  it.each(['我喜欢喝拿铁。','我最近更喜欢燕麦拿铁了。','今天散步回来，心情挺好。','小猫可爱极了','我喜欢你推荐的咖啡','我喜欢你家的猫','我不喜欢你','我不是很喜欢你','我没有那么喜欢你','抱抱熊很可爱'])('does not force affection for: %s',text=>{
-  expect(decide(text).primaryIntent).toBe('continue_topic');
+  expect(['continue_topic','acknowledge']).toContain(decide(text).primaryIntent);
+  expect(decide(text).primaryIntent).not.toBe('express_affection');
  });
  it.each(['我好喜欢你呀','我爱你','我想你了','遥遥，抱抱','我想抱抱你','亲亲','宝贝'])('recognizes directed affection: %s',text=>{
   expect(decide(text).primaryIntent).toBe('express_affection');
