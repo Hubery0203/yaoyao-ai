@@ -322,6 +322,7 @@ export function buildFallbackResponse(input: {
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
   if(style.styleFeedback)return '嗯，刚才说得太端着了。';
+  if(style.affectionateClosing)return '晚安，宝贝。';
   if(style.acknowledgment)return /^晚安/u.test(input.userInput.trim())?'晚安。':'好呀。';
   // Style guards and their exhaustion path must obey the same pacing rule.
   // A literal temporary restriction is user evidence, not a new durable fact.

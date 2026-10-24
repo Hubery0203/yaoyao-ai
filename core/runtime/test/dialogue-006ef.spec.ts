@@ -8,6 +8,24 @@ import {validationFailureSummary} from '../src/conversation/quality.js';
 import {renderConversationContinuity} from '../src/conversation/continuity.js';
 const context=(...summaries:string[])=>({memories:summaries.map((summary,i)=>({memoryId:String(i),summary})),telemetry:{selectedCount:summaries.length}})as RelevantMemoryContext;
 const decision=(text:string)=>baselineDecision({currentInput:text,emotion:{},situation:{intent:'chat',urgency:'normal',taskNature:'general'},recentConversation:[],userId:'u',yaoyaoId:'y',personaTone:'warm',traceId:'t'});
+describe('006EF owner-calibrated brief affection',()=>{
+ it('uses brief direct affection for a bedtime message without classifying detailed help that way',()=>{
+   expect(conversationStyle('宝贝，今晚很开心，一起睡觉吧。')).toMatchObject({briefAffection:true,affectionateClosing:true});
+   expect(conversationStyle('宝贝，详细解释一下这段代码。').briefAffection).toBe(false);
+   expect(conversationStyle('解释“我爱你”的意思。').briefAffection).toBe(false);
+   for(const text of ['我不喜欢你。','我没有那么喜欢你。','我喜欢你推荐的茶。'])expect(conversationStyle(text).briefAffection).toBe(false);
+ });
+ it('keeps affectionate bedtime closure free of a new question',()=>{
+   expect(dialogueStyleFailure('今天为什么开心呀？','宝贝，一起睡觉吧。')).toBe('dialogue: unwanted question');
+   expect(dialogueStyleFailure('好呀，晚安宝贝～','宝贝，一起睡觉吧。')).toBeNull();
+   expect(buildFallbackResponse({userInput:'宝贝，一起睡觉吧。',decision:decision('宝贝，一起睡觉吧。')})).toBe('晚安，宝贝。');
+ });
+ it.each(['灯我来关，你躺好就行。','我给你盖好被子。','我躺在你身边。'])('rejects physical staging in a chat response: %s',reply=>expect(dialogueStyleFailure(reply,'一起睡觉吧。')).toBe('dialogue: invented offline activity'));
+ it('permits quoted lines and explicit writing tasks',()=>{
+   expect(dialogueStyleFailure('这句“灯我来关”是对白。','解释这句话。')).toBeNull();
+   expect(dialogueStyleFailure('灯我来关。','写一段故事对白。')).toBeNull();
+ });
+});
 describe('006EF observed offline invention',()=>{
  it.each(['我这边刚把手里的事收尾，水声大吗？','我刚下班。','我正在喝着咖啡。'])('rejects an unsupported offline self-report: %s',reply=>expect(dialogueStyleFailure(reply,'河边风挺舒服。')).toBe('dialogue: invented offline activity'));
  it.each(['你说“我刚下班”是指现在吗？','我没有刚下班。','如果我刚下班，会想休息。','我刚说的是你的计划。','你刚下班，辛苦了。'])('preserves quoted, conditional and non-physical statements: %s',reply=>expect(dialogueStyleFailure(reply,'河边风挺舒服。')).toBeNull());
