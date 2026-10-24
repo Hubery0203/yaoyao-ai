@@ -1,4 +1,6 @@
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
+import {conversationStyle,dialogueStyleFailure} from '../conversation/style.js';
+import {hasContradictedUserFact,hasUnsupportedPlanOutcome} from '../conversation/memory-context.js';
 /**
  * Response Validation — MVP-002F.
  *
@@ -264,6 +266,10 @@ function checkContinuity(
 ): { ok: boolean; reason: string } {
   const trimmed = responseText.trim();
   if(hasRepeatedStatementMotiveProbe(responseText,userInput,recentConversation))return {ok:false,reason:"continuity: repeated statement motive probe"};
+  const styleFailure=dialogueStyleFailure(responseText,userInput);
+  if(styleFailure)return {ok:false,reason:styleFailure};
+  if(hasContradictedUserFact(responseText,userInput,recentConversation))return {ok:false,reason:'continuity: contradicted latest user fact'};
+  if(hasUnsupportedPlanOutcome(responseText,userInput,recentConversation))return {ok:false,reason:'continuity: unsupported plan outcome'};
   // No verbatim echo of the user input.
   if (userInput.trim().length > 5 && trimmed === userInput.trim()) {
     return { ok: false, reason: "continuity: verbatim echo of user input" };
@@ -312,18 +318,22 @@ export function buildFallbackResponse(input: {
   decision: Decision;
 }): string {
   const { decision } = input;
+  const style=conversationStyle(input.userInput);
+  if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
+  if(style.styleFeedback)return '嗯，刚才说得太端着了。';
+  if(style.acknowledgment)return /^晚安/u.test(input.userInput.trim())?'晚安。':'好呀。';
   switch (decision.primaryIntent) {
     case "comfort":
     case "care":
-      return "宝贝，我在呢。慢慢说，我听着。";
+      return "我在，听你说。";
     case "express_affection":
-      return "嘿嘿，遥遥也在想你呀。";
+      return "我也想你。";
     case "express_hurt":
       return "嗯……我有点不知道该说什么，但我不想不理你。";
     case "answer":
     case "continue_topic":
     default:
-      return "嗯，我在听，你继续说呀。";
+      return "这句我没接好，能换个说法吗？";
   }
 }
 
@@ -336,6 +346,9 @@ export function buildRepairInstruction(
     `[REPAIR — your previous response failed validation at stage "${failureStage}": ${reason}]`,
     `Regenerate the response. Keep: 沈知遥 identity, deep_partner relationship (never breakup/terminate), natural warm tone.`,
     ...(reason.includes("premature memory receipt")?["Acknowledge the fact naturally without claiming storage: do not say 记住了/记下了/已经保存. You may say you heard or recall what the user said."]:[]),
+    ...(reason.startsWith('dialogue:')?['Respect the current style request. Reply briefly and naturally; omit unwanted questions and abandoned-topic hooks. Do not turn the repair into an apology or a list of promises.']:[]),
+    ...(reason.includes('contradicted latest user fact')?['Use the latest literal user statement for this object. Do not repeat the superseded assertion or invent a substitute preference. Today-only restrictions remain temporary.']:[]),
+    ...(reason.includes('unsupported plan outcome')?['Only a plan is recorded. Do not assert that it happened or that it definitely has not happened. State only that the user mentioned a plan and has not told you about completion.']:[]),
     `Fix the specific failure above. Output the full 5-field contract JSON again.`,
   ].join("\n");
 }

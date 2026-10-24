@@ -19,8 +19,8 @@ function cruise(targets: string[]): Violation[] {
       ROOT,
       "node_modules/dependency-cruiser/bin/dependency-cruise.mjs",
     ),
-    ["--config", ".dependency-cruiser.cjs", "--output-type", "json", ...targets],
-    { cwd: ROOT, encoding: "utf8" },
+    ["--config", ".dependency-cruiser.cjs", "--exclude", "(^|/)dist/", "--output-type", "json", ...targets],
+    { cwd: ROOT, encoding: "utf8", maxBuffer:8*1024*1024 },
   );
   const parsed = JSON.parse(out) as { summary: { violations: Violation[] } };
   return parsed.summary.violations;

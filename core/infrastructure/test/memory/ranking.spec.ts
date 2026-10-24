@@ -51,9 +51,7 @@ describe("D01 — Relevant memory is retrieved and ranked", () => {
     const irrelevant = candidate({ memoryId: "mem-irr", content: "用户昨天去公园散步" });
     const ranked = rankAndSelect([irrelevant, relevant], "我想喝咖啡", W, NOW, 5);
     expect(ranked[0].memoryId).toBe("mem-rel");
-    expect(ranked[0].signals.relevance).toBeGreaterThan(
-      ranked[1].signals.relevance,
-    );
+    expect(ranked.map(r=>r.memoryId)).toEqual(["mem-rel"]);
   });
 
   it("buildQueryText combines input + situation + recent conversation", () => {
@@ -61,22 +59,22 @@ describe("D01 — Relevant memory is retrieved and ranked", () => {
       currentInput: "我们去哪家咖啡店？",
       situation: { intent: "chat", urgency: "normal", taskNature: "general" },
       relationshipContext: { type: "deep_partner", status: "active" },
-      recentConversation: ["昨天聊了旅行"],
+      recentConversation: ["User: 昨天聊了旅行", "YaoYao: 去巴黎吧"],
     });
     expect(q).toContain("我们去哪家咖啡店？");
-    expect(q).toContain("昨天聊了旅行");
+    expect(q).not.toContain("昨天聊了旅行");
+    expect(q).not.toContain("巴黎");
     // Not just the raw user input.
     expect(q.length).toBeGreaterThan("我们去哪家咖啡店？".length);
   });
 });
 
 describe("D02 — Irrelevant memory ranks lower", () => {
-  it("zero keyword overlap → relevance 0 → ranked last", () => {
+  it("zero keyword overlap is excluded from model context", () => {
     const a = candidate({ memoryId: "a", content: "完全不相关的内容 about 天气" });
     const b = candidate({ memoryId: "b", content: "用户喜欢喝咖啡" });
     const ranked = rankAndSelect([a, b], "咖啡", W, NOW, 5);
-    expect(ranked[ranked.length - 1].memoryId).toBe("a");
-    expect(ranked.find((r) => r.memoryId === "a")!.signals.relevance).toBe(0);
+    expect(ranked.map(r=>r.memoryId)).toEqual(["b"]);
   });
 });
 
@@ -142,8 +140,8 @@ describe("D06 — Confidence", () => {
       W,
       200,
     );
-    expect(hedged).toContain("可能");
-    expect(plain).not.toContain("可能");
+    expect(hedged).toContain("待核实");
+    expect(plain).not.toContain("待核实");
   });
 });
 
@@ -198,8 +196,8 @@ describe("D12 — Projection is model-safe", () => {
   it("type prefixes frame the memory for the model", () => {
     const shared = scoreCandidate(candidate({ type: "SHARED_LIFE", content: "一起去旅行" }), "", W, NOW);
     const semantic = scoreCandidate(candidate({ type: "SEMANTIC", content: "喜欢咖啡" }), "", W, NOW);
-    expect(projectSummary(shared, W, 200)).toContain("共同回忆");
-    expect(projectSummary(semantic, W, 200)).toContain("用户提到");
+    expect(projectSummary(shared, W, 200)).toContain("计划不代表已发生");
+    expect(projectSummary(semantic, W, 200)).toContain("用户资料");
   });
 });
 

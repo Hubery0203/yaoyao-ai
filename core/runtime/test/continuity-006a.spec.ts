@@ -20,7 +20,7 @@ describe('006A grounded receipt time',()=>{
   const summary=summarizeTurnQuality({validation:{failures:[validationFailureSummary(result)]}});expect(summary.failures[0].code).toBe('elapsed_recall_time');expect(JSON.stringify(summary)).not.toContain('橙花');
  });
  it('guides topic change, short answers and unrelated preferences without copying raw data',()=>{
-  const text=renderConversationContinuity('热的',['YaoYao: 私密问题'],timing);expect(text).toContain(now.toISOString());expect(text).toContain('short reply');expect(text).toContain('switches subjects');expect(text).toContain('does not erase preferences');expect(text).not.toContain('私密问题');
+  const text=renderConversationContinuity('热的',['YaoYao: 私密问题'],timing);expect(text).toContain(now.toISOString());expect(text).toContain('short reply');expect(text).toContain('用户的新分享本身就是话题');expect(text).toContain('does not erase preferences');expect(text).not.toContain('私密问题');
  });
  it('represents invalid timestamps as unknown',()=>expect(renderMessageTime(new Date('invalid'))).toBe('unknown'));
  it('renders the persisted timestamp in C6, preserving role-labelled text',()=>{

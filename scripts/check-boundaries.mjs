@@ -18,11 +18,13 @@ function runCruiser(targets) {
       "./node_modules/dependency-cruiser/bin/dependency-cruise.mjs",
       "--config",
       ".dependency-cruiser.cjs",
+      "--exclude",
+      "(^|/)dist/",
       "--output-type",
       "json",
       ...targets,
     ],
-    { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    { cwd: root, encoding: "utf8", maxBuffer:8*1024*1024, stdio: ["ignore", "pipe", "pipe"] },
   );
   return JSON.parse(out);
 }
