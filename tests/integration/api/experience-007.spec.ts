@@ -23,7 +23,7 @@ describe.skipIf(!docker)('007 real inbox, outreach and owner isolation',()=>{
  },120000);
  beforeEach(async()=>{
   await ctx.db.adminPool.query('DELETE FROM weixin_followups');await ctx.db.adminPool.query('DELETE FROM weixin_messages');
-  await ctx.db.adminPool.query('UPDATE weixin_channels SET outreach_settings=$1,outreach_version=0,outreach_since=NULL,paused=false,auth_expired=false,last_inbound_at=NULL,last_context_token=NULL',[DEFAULT_OUTREACH]);
+  await ctx.db.adminPool.query('UPDATE weixin_channels SET outreach_settings=$1,outreach_version=0,outreach_since=NULL,paused=false,auth_expired=false,last_inbound_at=NULL,last_context_token=NULL,cutoff_ms=$2',[DEFAULT_OUTREACH,Date.now()-48*3600000]);
  });
  afterAll(async()=>{await store?.close();await ctx?.teardown();});
  it('requires auth and ownership for all new controls',async()=>{
@@ -100,6 +100,13 @@ describe.skipIf(!docker)('007 real inbox, outreach and owner isolation',()=>{
  it('bounds and expires explicit tasks without catching up disabled-period tasks',async()=>{
   await store.settings(owner.userId,settings());await expect(store.followup(owner.userId,'hello',new Date(Date.now()-1).toISOString())).rejects.toThrow('INVALID_FOLLOWUP');await expect(store.followup(owner.userId,'hello',new Date(Date.now()+31*86400000).toISOString())).rejects.toThrow('INVALID_FOLLOWUP');
   await store.followup(owner.userId,'hello',due());await activity();await store.scheduleOutreach(new Date(Date.now()+2*86400000));expect(await all()).toHaveLength(0);expect((await ctx.db.adminPool.query('SELECT stage FROM weixin_followups')).rows[0].stage).toBe('expired');
+ });
+ it('never refreshes a stale conversation token merely because an old message is polled now',async()=>{
+  await store.settings(owner.userId,{...settings(),greeting:true});const old={...msg('old','昨天的消息'),time:Date.now()-25*3600000};await store.ingest([old],'old');await store.update(old.key,'accepted');await store.scheduleOutreach();expect((await all()).filter(r=>r.origin==='proactive')).toHaveLength(0);
+  const fresh=msg('fresh','现在的消息');await store.ingest([fresh],'fresh');await store.ingest([{...msg('older','更旧的消息'),time:old.time}],'older');expect((await store.channel()).last_context_token).toBe(fresh.contextToken);
+ });
+ it('counts a skipped uncertain attempt against the outreach frequency cap',async()=>{
+  await store.settings(owner.userId,settings());await activity();await store.followup(owner.userId,'hello',due());await store.scheduleOutreach(new Date(Date.now()+2000));const row=(await store.next())!;expect(await store.beginSend(row.message_key)).toBe(true);await store.update(row.message_key,'uncertain');await store.resolve(owner.userId,row.message_key,'skip');await store.followup(owner.userId,'another',due());await store.scheduleOutreach(new Date(Date.now()+2000));expect(await all()).toHaveLength(1);
  });
  it('does not report cancellation after a followup already entered sending',async()=>{
   await store.settings(owner.userId,settings());await activity();const job=await store.followup(owner.userId,'面试怎么样？',due());await store.scheduleOutreach(new Date(Date.now()+2000));const row=(await store.next())!;expect(await store.beginSend(row.message_key)).toBe(true);

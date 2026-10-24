@@ -39,7 +39,7 @@ export class WeixinStore {
      if(isOutreachStop(m.text))await db.query(`UPDATE weixin_channels SET outreach_settings=jsonb_set(outreach_settings,'{enabled}','false'),outreach_version=outreach_version+1 WHERE bot_id=$1`,[this.credentials.botId]);
      await db.query("UPDATE weixin_messages SET stage='skipped',last_error='OWNER_CANCELLED',updated_at=clock_timestamp() WHERE bot_id=$1 AND stage IN ('pending','generating','ready') AND (origin='proactive' OR $2)",[this.credentials.botId,isReplyCancellation(m.text)]);
      await db.query("INSERT INTO weixin_messages(bot_id,message_key,user_id,text,context_token,stage) VALUES($1,$2,$3,$4,$5,'skipped')",[this.credentials.botId,m.key,c.user_id,m.text,m.contextToken]);
-     await db.query('UPDATE weixin_channels SET last_inbound_at=clock_timestamp(),last_context_token=$2 WHERE bot_id=$1',[this.credentials.botId,m.contextToken]);
+     await db.query("UPDATE weixin_channels SET last_context_token=CASE WHEN last_inbound_at IS NULL OR last_inbound_at<=$3 THEN $2 ELSE last_context_token END,last_inbound_at=GREATEST(last_inbound_at,$3) WHERE bot_id=$1",[this.credentials.botId,m.contextToken,new Date(Math.min(m.time,Date.now()))]);
      continue;
     }
     const match=/^绑定\s+([A-F0-9]{16})$/i.exec(m.text.trim());
@@ -54,7 +54,7 @@ export class WeixinStore {
     if(!c.user_id)continue;
     // Fresh user activity takes priority over a scheduled, not-yet-sent message.
     await db.query("UPDATE weixin_messages SET stage='skipped',last_error='USER_ACTIVE' WHERE bot_id=$1 AND origin='proactive' AND stage='ready'",[this.credentials.botId]);
-    await db.query('UPDATE weixin_channels SET last_inbound_at=clock_timestamp(),last_context_token=$2 WHERE bot_id=$1',[this.credentials.botId,m.contextToken]);
+    await db.query("UPDATE weixin_channels SET last_context_token=CASE WHEN last_inbound_at IS NULL OR last_inbound_at<=$3 THEN $2 ELSE last_context_token END,last_inbound_at=GREATEST(last_inbound_at,$3) WHERE bot_id=$1",[this.credentials.botId,m.contextToken,new Date(Math.min(m.time,Date.now()))]);
     await db.query('INSERT INTO weixin_messages(bot_id,message_key,user_id,text,context_token,reply,stage) VALUES($1,$2,$3,$4,$5,$6,$7)',[this.credentials.botId,m.key,c.user_id,m.text,m.contextToken,reply,reply?'ready':'pending']);
    }
    const count=(await db.query("SELECT count(*)::int AS n FROM weixin_messages WHERE bot_id=$1 AND stage NOT IN ('accepted','confirmed','skipped')",[this.credentials.botId])).rows[0].n;
@@ -167,7 +167,7 @@ export class WeixinStore {
   if(!s.enabled||!c.user_id||c.paused||c.auth_expired||isQuietMinute(clock.minute,s)||!c.last_context_token||!c.last_inbound_at)return;
   const idle=now.getTime()-c.last_inbound_at.getTime();if(idle<600000||idle>=86400000)return;
   if((await db.query("SELECT 1 FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') LIMIT 1",[bot])).rowCount)return;
-  const n=(await db.query("SELECT count(*) FILTER(WHERE outreach_day=$2)::int daily,count(*) FILTER(WHERE created_at>$3)::int rolling FROM weixin_messages WHERE bot_id=$1 AND origin='proactive' AND stage<>'skipped' AND (outreach_day=$2 OR created_at>$3)",[bot,clock.day,new Date(now.getTime()-86400000)])).rows[0];
+  const n=(await db.query("SELECT count(*) FILTER(WHERE outreach_day=$2)::int daily,count(*) FILTER(WHERE created_at>$3)::int rolling FROM weixin_messages WHERE bot_id=$1 AND origin='proactive' AND (stage<>'skipped' OR attempts>0) AND (outreach_day=$2 OR created_at>$3)",[bot,clock.day,new Date(now.getTime()-86400000)])).rows[0];
   if(n.daily>=s.dailyLimit||n.rolling>=s.dailyLimit)return;
   const job=(await db.query("SELECT * FROM weixin_followups WHERE bot_id=$1 AND stage='pending' AND due_at<=$2 AND expires_at>$2 AND due_at>= $3 ORDER BY due_at,id LIMIT 1 FOR UPDATE",[bot,now,c.outreach_since])).rows[0];
   let reason:string,message:string;
