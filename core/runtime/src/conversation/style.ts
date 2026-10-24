@@ -1,4 +1,5 @@
 /** Per-turn expression policy. No persistent preferences, model call or Core writes. */
+import {extractExplicitMemories} from '@yaoyao/domain';
 export interface ConversationStyle {
   readonly topicShift:boolean;
   readonly resumeTopic:boolean;
@@ -28,7 +29,8 @@ export function conversationStyle(input:string):ConversationStyle {
   const detailed=!/(?:不用|不要|别)(?:详细|展开)/u.test(text)&&/(?:详细(?:说|讲|解释|介绍)|展开(?:说|讲)|具体步骤|完整(?:代码|方案)|一步一步)/u.test(text);
   const acknowledgment=/^(?:嗯+|哦+|噢+|好[的呀啊吧]?|行[呀啊]?|知道了|明白了|收到|谢谢[你啦呀]?|晚安|早[呀啊安]?|哈哈+)[。！!～~\s]*$/u.test(text);
   const directedAffection=/^我(?:现在|一直)?喜欢(?:你|遥遥|知遥|沈知遥)(?:了|呀|啊|呢|哦|嘛)?[。！!]?$/u.test(text);
-  const disclosure=!directedAffection&&!/[？?]|为什么|怎么|请问/u.test(text)&&/^我(?:现在|最近|今天|今晚|一直)?(?:不再喜欢|不喜欢|喜欢|爱喝|不再喝|不喝|不吃|住在|叫|刚吃了|刚喝了)[^，,。！？!?]{1,100}[。！!]?$/u.test(text);
+  const sharedPlan=/^[^。！？!?]{1,200}[。！!]?$/u.test(text)&&extractExplicitMemories(text).some(c=>c.kind==='fact'&&c.type==='SHARED_LIFE');
+  const disclosure=!directedAffection&&!/[？?]|为什么|怎么|请问/u.test(text)&&(sharedPlan||/^我(?:现在|最近|今天|今晚|一直)?(?:不再喜欢|不喜欢|喜欢|爱喝|不再喝|不喝|不吃|住在|叫|刚吃了|刚喝了)[^，,。！？!?]{1,100}[。！!]?$/u.test(text));
   const styleFeedback=/(?:太像|不像|别像|不要像).{0,8}(?:AI|人工智能|机器人|客服)|(?:说话|聊天|回答).{0,8}(?:自然点|自然一点|像真人)|(?:别|不要)(?:这么|那么)?(?:机械|官方|模板化)/iu.test(text);
   return {topicShift,resumeTopic,quiet,noQuestions,noAdvice,brief,detailed,acknowledgment,disclosure,styleFeedback};
 }
