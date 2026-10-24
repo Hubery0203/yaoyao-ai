@@ -9,7 +9,7 @@ async function raw(path,options={}){const controller=new AbortController();const
 function acceptAuth(data){state.token=data.accessToken;state.userId=data.userId;sessionStorage.setItem('yaoyao.refresh',data.refreshToken);sessionStorage.setItem('yaoyao.user',data.userId);}
 async function renew(){if(!state.renewing)state.renewing=(async()=>{const generation=state.generation;const refreshToken=sessionStorage.getItem('yaoyao.refresh');if(!refreshToken)throw new Error('请先登录。');const {r,body}=await raw('/api/v1/auth/refresh',{method:'POST',body:JSON.stringify({refreshToken})});if(!r.ok)throw new Error('登录已过期，请重新登录。');if(generation!==state.generation)throw new Error('账户已切换。');acceptAuth(body.data);})().finally(()=>{state.renewing=null;});return state.renewing;}
 async function api(path,options={},retry=true){const generation=state.generation;const {r,body}=await raw('/api/v1'+path,{...options,headers:{Authorization:'Bearer '+state.token,...options.headers}});if(generation!==state.generation)throw new Error('账户已切换。');if(r.status===401&&retry){try{await renew();}catch{if(generation!==state.generation)throw new Error('账户已切换。');clearAccount();if(!$('#auth').open)$('#auth').showModal();throw new Error('请重新登录后继续。');}return api(path,options,false);}if(!r.ok){const code=body.error?.code||body.code;throw new Error(code==='STALE_WRITE'?'这条记忆已变化，请刷新后重新查看。':code==='IDEMPOTENCY_KEY_REUSED'?'本次重试的内容不一致，请刷新记忆后再操作。':code==='DOMAIN_INVARIANT'?'请填写一条明确的同类事实，例如更正住址，或把喜欢改成不喜欢；复杂变化可在聊天中说明。':r.status===429?'操作有些频繁，稍等一会再试。':r.status===401?'邮箱或密码不正确。':r.status===503?'后端暂时无法连接。':code==='DUPLICATE_ENTITY'?'这个邮箱已经注册，请直接登录。':code==='VALIDATION_FAILED'?'请检查填写的内容。':body.error?.message||'操作未完成，请稍后再试。');}return body;}
-function clearAccount(){state.generation++;state.token=null;state.userId=null;state.email='';$('#message').value='';$('#password').value='';state.messages=[];state.memories=[];state.audits=[];state.memoryTotal=0;state.memoryRequest++;state.detailRequest++;state.memoryDetail=null;state.memoryEdit=null;$('#memory-detail').close();$('#memory-detail-body').replaceChildren();$('#pending-count').textContent='0';state.pending=null;state.sending=false;sessionStorage.removeItem('yaoyao.refresh');sessionStorage.removeItem('yaoyao.user');sessionStorage.removeItem('yaoyao.pending');$('#account-name').replaceChildren(node('span','登录我们的空间'),node('small','你的对话，只属于你'));$('#user-id').textContent='尚未登录';$('#model-state').textContent='登录后查看';$('#weixin-state').textContent='登录后查看';$('#weixin-code').textContent='';$('#weixin-deliveries').replaceChildren();$('#weixin-bind').hidden=true;$('#weixin-toggle').hidden=true;renderMessages();renderHistory();renderMemories();}
+function clearAccount(){state.generation++;state.token=null;state.userId=null;state.email='';$('#message').value='';$('#password').value='';state.messages=[];state.memories=[];state.audits=[];state.memoryTotal=0;state.memoryRequest++;state.detailRequest++;state.memoryDetail=null;state.memoryEdit=null;$('#memory-detail').close();$('#memory-detail-body').replaceChildren();$('#pending-count').textContent='0';state.pending=null;state.sending=false;sessionStorage.removeItem('yaoyao.refresh');sessionStorage.removeItem('yaoyao.user');sessionStorage.removeItem('yaoyao.pending');$('#account-name').replaceChildren(node('span','登录我们的空间'),node('small','你的对话，只属于你'));$('#user-id').textContent='尚未登录';$('#model-state').textContent='登录后查看';$('#weixin-state').textContent='登录后查看';$('#weixin-code').textContent='';$('#weixin-deliveries').replaceChildren();$('#outreach-panel').hidden=true;lastOutreachSettings=null;$('#followup-list').replaceChildren();$('#outreach-feedback').textContent='';$('#weixin-bind').hidden=true;$('#weixin-toggle').hidden=true;renderMessages();renderHistory();renderMemories();}
 function requireLogin(){if(state.token)return true;$('#auth').showModal();return false;}
 function view(){const v=titles[location.hash.slice(1)]?location.hash.slice(1):'chat';document.querySelectorAll('.view').forEach(n=>n.classList.toggle('hidden',n.id!==v));document.querySelectorAll('nav a').forEach(n=>n.classList.toggle('active',n.dataset.view===v));$('#page-title').textContent=titles[v];if(state.token&&v==='memories')loadMemories().catch(e=>notice(errorText(e)));if(state.token&&v==='settings')loadConnection().catch(e=>notice(errorText(e)));}
 function updateAccount(){const label=prefs.nickname||state.email||'我的空间';$('#account-name').replaceChildren(node('span',label),node('small','已登录 · 私人空间'));$('#user-id').textContent=state.userId;}
@@ -118,6 +118,7 @@ async function loadWeixin(){
  $('#weixin-toggle').hidden=!data.bound;$('#weixin-toggle').textContent=data.paused?'恢复':'暂停';
  $('#weixin-toggle').onclick=()=>weixinAction('/control',{action:data.paused?'resume':'pause'});
  if(data.bound)$('#weixin-code').textContent='';
+ renderOutreach(data);
  const list=$('#weixin-deliveries');list.replaceChildren();
  for(const d of data.deliveries||[]){
   if(!['uncertain','failed'].includes(d.stage))continue;
@@ -130,3 +131,40 @@ async function loadWeixin(){
 async function weixinAction(path,body){if(!requireLogin())return;try{await api('/weixin'+path,{method:'POST',body:JSON.stringify(body)});await loadWeixin();}catch(e){notice(errorText(e));}}
 $('#weixin-refresh').onclick=()=>loadWeixin().catch(e=>notice(errorText(e)));
 $('#weixin-bind').onclick=async()=>{if(!requireLogin())return;try{const {data}=await api('/weixin/binding-code',{method:'POST'});$('#weixin-code').textContent='请在微信 ClawBot 发送：绑定 '+data.code+'（10 分钟内有效）';}catch(e){notice(errorText(e));}};
+
+const minuteTime=value=>String(Math.floor(value/60)).padStart(2,'0')+':'+String(value%60).padStart(2,'0');
+const timeMinute=value=>{const [h,m]=value.split(':').map(Number);return h*60+m;};
+let lastOutreachSettings=null;
+function renderOutreach(data){
+ $('#outreach-panel').hidden=!data.bound;
+ if(!data.bound){lastOutreachSettings=null;$('#followup-list').replaceChildren();return;}
+ const settings=data.outreach;
+ if(!settings)return;
+ lastOutreachSettings=settings;
+ $('#outreach-enabled').checked=settings.enabled;$('#outreach-zone').value=settings.timezone;
+ $('#outreach-quiet-start').value=minuteTime(settings.quietStart);$('#outreach-quiet-end').value=minuteTime(settings.quietEnd);
+ $('#outreach-limit').value=String(settings.dailyLimit);$('#outreach-greeting').checked=settings.greeting;$('#outreach-greeting-time').value=minuteTime(settings.greetingMinute);
+ $('#followup-form').querySelector('button').disabled=!settings.enabled;
+ $('#followup-time-label').textContent='联系时间（按当前设备时区 '+Intl.DateTimeFormat().resolvedOptions().timeZone+' 填写）';
+ const list=$('#followup-list');list.replaceChildren();
+ for(const item of data.followups||[]){
+  const labels={pending:'待联系',queued:'已进入发送队列',cancelled:'已取消',expired:'已过期'};
+  const deliveryLabels={accepted:'微信接口已接受',confirmed:'已由你确认收到',uncertain:'发送结果待确认',failed:'发送失败',skipped:'未发送'};
+  const label=deliveryLabels[item.delivery_stage]||labels[item.stage]||item.stage;
+  const card=node('div',undefined,'history-card');card.append(node('p',item.message),node('small',displayTime(item.due_at)+' · '+label));
+  if(item.stage==='pending'||item.stage==='queued'&&['ready','skipped'].includes(item.delivery_stage)){const cancel=node('button','取消事项','secondary');cancel.onclick=()=>weixinAction('/followups/'+item.id+'/cancel',{});card.append(cancel);}
+  list.append(card);
+ }
+}
+$('#outreach-form').onsubmit=async event=>{
+ event.preventDefault();if(!requireLogin())return;
+ const settings={enabled:$('#outreach-enabled').checked,timezone:$('#outreach-zone').value.trim(),quietStart:timeMinute($('#outreach-quiet-start').value),quietEnd:timeMinute($('#outreach-quiet-end').value),dailyLimit:Number($('#outreach-limit').value),greeting:$('#outreach-greeting').checked,greetingMinute:timeMinute($('#outreach-greeting-time').value)};
+ try{await api('/weixin/outreach',{method:'POST',body:JSON.stringify(settings)});await loadWeixin();$('#outreach-feedback').textContent=settings.enabled?'主动联系已开启。':'主动联系已关闭。';}catch(e){$('#outreach-feedback').textContent=errorText(e);}
+};
+$('#outreach-disable').onclick=async()=>{if(!requireLogin()||!lastOutreachSettings)return;try{await api('/weixin/outreach',{method:'POST',body:JSON.stringify({...lastOutreachSettings,enabled:false})});await loadWeixin();$('#outreach-feedback').textContent='主动联系已关闭。';}catch(e){notice(errorText(e));}};
+$('#followup-form').onsubmit=async event=>{
+ event.preventDefault();if(!requireLogin())return;
+ const message=$('#followup-message').value.trim(),due=new Date($('#followup-time').value);
+ if(!Number.isFinite(due.getTime())){notice('请选择有效的联系时间。');return;}
+ try{await api('/weixin/followups',{method:'POST',body:JSON.stringify({message,dueAt:due.toISOString()})});$('#followup-message').value='';await loadWeixin();notice('事项已添加。');}catch(e){notice(errorText(e));}
+};

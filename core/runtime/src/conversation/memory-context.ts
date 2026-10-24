@@ -109,3 +109,13 @@ export function hasContradictedUserFact(response:string,input:string,recent:read
   }
   return false;
 }
+
+/** Selected literal long-term user facts can validate a recall beyond the recent C6 window.
+ * Hedged/unconfirmed summaries never become validation evidence or instructions. */
+export function selectedMemoryEvidence(context:RelevantMemoryContext):readonly string[]{
+ return context.memories.flatMap(m=>{
+  if(/^(?:待核实|可能)/u.test(m.summary))return [];
+  const fact=summaryFact(m.summary);
+  return fact&&fact.kind==='fact'?['User: '+fact.evidence]:[];
+ });
+}

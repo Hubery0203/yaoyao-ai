@@ -95,6 +95,7 @@ export interface ResponseValidationInput {
   readonly userInput: string;
   readonly recentConversation: ReadonlyArray<string>;
   readonly timing?: ConversationTiming;
+  readonly memoryEvidence?:ReadonlyArray<string>;
 }
 
 /**
@@ -182,7 +183,7 @@ export function validateResponse(
   }
 
   // Stage 5 — Continuity (§22).
-  const continuityCheck = checkContinuity(responseText, userInput, input.recentConversation);
+  const continuityCheck = checkContinuity(responseText, userInput, input.recentConversation,input.memoryEvidence);
   if (!continuityCheck.ok) {
     return {
       passed: false,
@@ -263,13 +264,14 @@ function checkContinuity(
   responseText: string,
   userInput: string,
   recentConversation: ReadonlyArray<string>,
+  memoryEvidence:ReadonlyArray<string>=[],
 ): { ok: boolean; reason: string } {
   const trimmed = responseText.trim();
   if(hasRepeatedStatementMotiveProbe(responseText,userInput,recentConversation))return {ok:false,reason:"continuity: repeated statement motive probe"};
   const styleFailure=dialogueStyleFailure(responseText,userInput);
   if(styleFailure)return {ok:false,reason:styleFailure};
-  if(hasContradictedUserFact(responseText,userInput,recentConversation))return {ok:false,reason:'continuity: contradicted latest user fact'};
-  if(hasUnsupportedPlanOutcome(responseText,userInput,recentConversation))return {ok:false,reason:'continuity: unsupported plan outcome'};
+  if(hasContradictedUserFact(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: contradicted latest user fact'};
+  if(hasUnsupportedPlanOutcome(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: unsupported plan outcome'};
   // No verbatim echo of the user input.
   if (userInput.trim().length > 5 && trimmed === userInput.trim()) {
     return { ok: false, reason: "continuity: verbatim echo of user input" };
@@ -321,6 +323,7 @@ export function buildFallbackResponse(input: {
   const { decision } = input;
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
+  if(style.farewell)return '好，回头聊～';
   if(style.styleFeedback)return '嗯，刚才说得太端着了。';
   if(style.affectionateClosing)return '晚安，宝贝。';
   if(style.acknowledgment)return /^晚安/u.test(input.userInput.trim())?'晚安。':'好呀。';

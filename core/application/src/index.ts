@@ -72,3 +72,5 @@ export * from "./usecases/memory-review.js";
 export * from "./usecases/memory-management.js";
 
 export * from "./weixin.js";
+export * from './weixin-policy.js';
+export {recordAcceptedOutreach} from './usecases/outreach.js';
