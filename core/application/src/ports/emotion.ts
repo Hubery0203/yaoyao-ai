@@ -61,6 +61,7 @@ export interface EmotionProposal {
  * the interpreter consumes Situation Understanding, it does not reimplement it.
  */
 export interface EmotionInterpretationInput {
+  readonly timeoutMs?:number;
   readonly userId: UserId;
   readonly yaoyaoId: YaoYaoId;
   readonly currentInput: string;
@@ -94,6 +95,8 @@ export interface EmotionInterpretationResult {
     readonly latencyMs: number;
     readonly retryCount: number;
     readonly fallbackUsed: boolean;
+    readonly attempts?:number;
+    readonly successfulUsage?:import("./llm.js").SuccessfulProviderUsage;
   };
 }
 

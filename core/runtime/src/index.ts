@@ -69,3 +69,5 @@ export type {
 } from "./context/layers.js";
 
 export {summarizeTurnQuality,validationFailureSummary} from "./conversation/quality.js";
+
+export {summarizeTurnPerformance} from "./conversation/performance.js";

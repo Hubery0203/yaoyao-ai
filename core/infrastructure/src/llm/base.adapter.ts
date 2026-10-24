@@ -24,6 +24,7 @@ import {
   type LLMProvider,
   type LLMRequest,
   type ProviderCapabilities,
+  type SuccessfulProviderUsage,
 } from "@yaoyao/application";
 import OpenAI from "openai";
 import { LLMOutputSchema, STRUCTURED_OUTPUT_INSTRUCTION } from "./schema.js";
@@ -45,6 +46,8 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
   readonly capabilities: ProviderCapabilities;
   protected readonly client: OpenAI;
   protected readonly defaultTimeoutMs: number;
+  private readonly usage=new WeakMap<LLMProposal,SuccessfulProviderUsage>();
+  usageFor(proposal:LLMProposal):SuccessfulProviderUsage|undefined {return this.usage.get(proposal);}
 
   constructor(config: AdapterConfig) {
     if (!config.apiKey) {
@@ -60,7 +63,7 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
     this.capabilities = config.capabilities;
     this.defaultTimeoutMs = config.defaultTimeoutMs;
     // The SDK holds the key internally; we never expose it.
-    this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+    this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL, maxRetries:0 });
   }
 
   async generate(request: LLMRequest): Promise<LLMProposal> {
@@ -71,13 +74,14 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
         ? "Return ONLY the emotion proposal JSON object specified above (primary, secondary, intensity, signals, confidence, optional cause). Do not wrap it in a conversation response object."
         : STRUCTURED_OUTPUT_INSTRUCTION,
     ].join("\n\n");
-    const userPrompt = [
+    const userPrompt = request.userInputInContext?request.conversationContext:[
       request.conversationContext,
       `[USER INPUT]\n${request.userInput}`,
     ].join("\n\n");
 
     let raw: string;
-    const started = Date.now();
+    let usage:SuccessfulProviderUsage|undefined;
+
     try {
       const completion = await this.client.chat.completions.create(
         {
@@ -89,16 +93,17 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
             { role: "user", content: userPrompt },
           ],
           response_format: { type: "json_object" },
-          max_tokens: 2000,
+          max_tokens: Number.isFinite(request.maxOutputTokens)?Math.max(128,Math.min(2000,Math.floor(request.maxOutputTokens!))):2000,
           temperature: 0.7,
         },
         { timeout: timeoutMs },
       );
       raw = completion.choices[0]?.message?.content ?? "";
+      const u=completion.usage;
+      if(u&&Number.isSafeInteger(u.prompt_tokens)&&u.prompt_tokens>=0&&Number.isSafeInteger(u.completion_tokens)&&u.completion_tokens>=0)usage={inputTokens:u.prompt_tokens,outputTokens:u.completion_tokens};
     } catch (err) {
       throw this.classifyError(err);
     }
-    void started;
 
     if (!raw) {
       throw new ProviderError({
@@ -109,7 +114,9 @@ export abstract class OpenAICompatibleAdapter implements LLMProvider {
       });
     }
 
-    return this.parseProposal(raw, request.outputSchemaName);
+    const proposal=this.parseProposal(raw, request.outputSchemaName);
+    if(usage)this.usage.set(proposal,usage);
+    return proposal;
   }
 
   /**
@@ -260,9 +267,12 @@ function parseRetryAfter(err: InstanceType<typeof OpenAI.RateLimitError>): numbe
     header = (headers as Record<string, string>)["retry-after"];
   }
   if (!header) return undefined;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds) && seconds > 0) {
-    return Math.min(seconds * 1000, 60_000);
+  const value=header.trim();
+  if(/^\d+(?:\.\d+)?$/.test(value)){
+    const seconds=Number(value);
+    return Number.isFinite(seconds)?Math.min(Number.MAX_SAFE_INTEGER,Math.ceil(seconds*1000)):undefined;
   }
-  return undefined;
+  if(/^[-+\d.]+$/.test(value))return undefined;
+  const date=Date.parse(value);
+  return Number.isFinite(date)?Math.max(0,date-Date.now()):undefined;
 }

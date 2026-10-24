@@ -57,6 +57,8 @@ import {validationFailureSummary} from "./quality.js";
 import { classifySituation } from "./situation.js";
 
 export interface OrchestratorDeps {
+  readonly modelBudgetMs?:number;
+  readonly maxOutputTokens?:number;
   readonly temporalEmotion?: import("@yaoyao/application").TemporalEmotionWriter;
   readonly router: AIRouter;
   readonly contextData: ContextDataPort;
@@ -124,6 +126,9 @@ export class ConversationOrchestrator {
 
   async converse(input: TurnInput): Promise<TurnOutput> {
     const trace = createTrace(input.traceId, input.userId);
+    const measurements={completedInvocations:0,failedInvocations:0,knownProviderAttempts:0,usageSamples:0,successfulInputTokens:0,successfulOutputTokens:0,contextMs:0,emotionMs:0,historyIncluded:0,historyDropped:0,historyNewestTruncated:false,estimatedContextTokens:0,emotionBudgetSkipped:false};
+    (trace as {performance?:unknown}).performance=measurements;
+    const recordModel=(t:{attempts?:number;retryCount:number;fallbackUsed:boolean;successfulUsage?:{inputTokens:number;outputTokens:number}})=>{measurements.completedInvocations++;measurements.knownProviderAttempts+=t.attempts??(t.retryCount+1+(t.fallbackUsed?1:0));if(t.successfulUsage){measurements.usageSamples++;measurements.successfulInputTokens+=t.successfulUsage.inputTokens;measurements.successfulOutputTokens+=t.successfulUsage.outputTokens;}};
     const executedSteps: PipelineStep[] = [];
     const requestId = input.requestId ?? randomUUID();
     const conversationEvents = this.deps.conversationEvents;
@@ -201,6 +206,7 @@ export class ConversationOrchestrator {
     // C6 live in 002G). PersonaData was loaded in Step 2 (reused here).
     // History → Memory Retrieval (read-only) → Persona Runtime → C0–C7 → budget.
     // MVP-002G: load conversation history first (feeds C6 + retrieval).
+    const contextStarted=Date.now();
     const turnTime=new Date();
     const conversationHistory = conversationEvents
       ? await conversationEvents.loadHistory({
@@ -248,6 +254,8 @@ export class ConversationOrchestrator {
       memoryRetrieved: memoryContext.memories.length,
       memoryTelemetry: memoryContext.telemetry,
     };
+    measurements.contextMs=Date.now()-contextStarted;
+    measurements.historyIncluded=assembled.history.included;measurements.historyDropped=assembled.history.dropped;measurements.historyNewestTruncated=assembled.history.newestTruncated;measurements.estimatedContextTokens=assembled.promptContext.estimatedInputTokens;
     executedSteps.push("context-assembly");
 
     // Step 5 — Decision (REAL in MVP-002F).
@@ -291,6 +299,7 @@ export class ConversationOrchestrator {
       selected.provider,
       this.deps.router.fallbackProvider(),
     );
+    const modelDeadline=Date.now()+(this.deps.modelBudgetMs??45000);
     const llmRequest: LLMRequest = {
       userId: input.userId as UserId,
       yaoyaoId: assembled.yaoyaoId as never,
@@ -300,17 +309,20 @@ export class ConversationOrchestrator {
         renderConversationContinuity(input.text,recentConversationTexts.slice(-6),{now:turnTime,turns:conversationHistory}),
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
+      userInputInContext:true,
+      maxOutputTokens:this.deps.maxOutputTokens??2000,
       userInput: input.text,
       decision,
       outputSchemaName: "llm-output-contract-v1",
-      timeoutMs: 30_000,
+      timeoutMs: Math.min(30000,Math.max(1,modelDeadline-Date.now())),
       metadata: {
-        runtimeVersion: "mvp-002f",
+        runtimeVersion: "mvp-006d",
         contextVersion: "c0-c7-v1",
         requestId: input.traceId,
       },
     };
     const { proposal, telemetry } = await invoker.invoke(llmRequest);
+    recordModel(telemetry);
     (trace as { llm?: unknown }).llm = {
       providerId: telemetry.providerId,
       modelId: telemetry.modelId,
@@ -339,10 +351,11 @@ export class ConversationOrchestrator {
     let fallbackUsed = false;
     const MAX_REPAIR_ATTEMPTS = 1;
 
-    while (!validationOutcome.passed && repairAttempts < MAX_REPAIR_ATTEMPTS) {
+    while (!validationOutcome.passed && repairAttempts < MAX_REPAIR_ATTEMPTS && Date.now()<modelDeadline) {
       repairAttempts += 1;
       const repairRequest: LLMRequest = {
         ...llmRequest,
+        timeoutMs:Math.min(30000,Math.max(1,modelDeadline-Date.now())),
         systemContext: [
           llmRequest.systemContext,
           buildRepairInstruction(
@@ -356,6 +369,7 @@ export class ConversationOrchestrator {
         },
       };
       const repaired = await invoker.invoke(repairRequest);
+      recordModel(repaired.telemetry);
       repairProviderFallback ||= repaired.telemetry.fallbackUsed;
       validationOutcome = validateResponse({
         proposal: repaired.proposal,
@@ -403,8 +417,9 @@ export class ConversationOrchestrator {
       stateChanged: false,
       eventsCommitted: 0,
     };
-    if (this.deps.emotionInterpreter && this.deps.emotionWriter) {
+    if (this.deps.emotionInterpreter && this.deps.emotionWriter && Date.now()<modelDeadline) {
       const emotionStart = Date.now();
+      let interpreted=false;
       try {
         // Current emotion state (Emotion State layer) from Step 4.
         const currentEmotion = Object.fromEntries(
@@ -415,6 +430,7 @@ export class ConversationOrchestrator {
         const { proposal, telemetry } = await this.deps.emotionInterpreter.interpret({
           userId: input.userId as UserId,
           yaoyaoId: personaData.yaoyao.yaoyaoId as YaoYaoId,
+          timeoutMs:Math.min(20000,Math.max(1,modelDeadline-Date.now())),
           currentInput: input.text,
           situation: {
             intent: situation.intent,
@@ -430,6 +446,8 @@ export class ConversationOrchestrator {
           relevantMemories: memoryContext.memories.map((m) => m.summary),
           traceId: input.traceId,
         });
+        recordModel(telemetry);interpreted=true;
+        measurements.emotionMs=Date.now()-emotionStart;
         writebackTrace["emotionInterpreterLatencyMs"] = Date.now() - emotionStart;
         writebackTrace["interpreterProvider"] = telemetry.providerId;
         writebackTrace["interpreterModel"] = telemetry.modelId;
@@ -475,10 +493,14 @@ export class ConversationOrchestrator {
       } catch (err) {
         // Emotion processing must never break the conversation turn.
         // Record the failure; the response still delivers.
+        if(!interpreted)measurements.failedInvocations++;measurements.emotionMs=Date.now()-emotionStart;
         writebackTrace["stateTransitionSuccess"] = false;
         writebackTrace["error"] =
           err instanceof Error ? err.message : String(err);
       }
+    } else if(this.deps.emotionInterpreter&&this.deps.emotionWriter){
+      measurements.emotionBudgetSkipped=true;
+      writebackTrace["note"]="skipped: this turn model time budget exhausted";
     } else {
       writebackTrace["note"] =
         "skipped: emotion interpreter/writer not wired (no-op in unit tests)";

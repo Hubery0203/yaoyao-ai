@@ -9,6 +9,9 @@ import { z } from "zod";
  */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  CONVERSATION_MODEL_BUDGET_MS: z.coerce.number().int().min(5000).max(90000).default(45000),
+  CONVERSATION_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(2000).default(2000),
+  EMOTION_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(2000).default(512),
   WEIXIN_ENABLED: z.enum(["0","1"]).default("0"),
   WEIXIN_CREDENTIALS_FILE: z.string().min(1).optional(),
   LITE_MODE: z.enum(["0","1"]).default("0"),
