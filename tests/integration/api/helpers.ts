@@ -1,3 +1,4 @@
+import {WEIXIN_CHANNEL,type WeixinChannelPort} from "@yaoyao/application";
 /**
  * HTTP integration harness for Phase 4 (Testcontainers + NestJS).
  *
@@ -73,12 +74,13 @@ async function setupApiDatabase(): Promise<TestDatabase> {
   const run = await applyMigrations(adminPool, MIGRATIONS_DIR, "test-harness");
   const applied = run.applied;
   if (
-    applied.length !== 5 ||
+    applied.length !== 6 ||
     applied[0] !== "0001_initial_schema" ||
     applied[1] !== "0002_auth_lookup" ||
     applied[2] !== "0003_conversation_event_types" ||
     applied[3] !== "0004_continuity_jobs" ||
-    applied[4] !== "0005_continuity_engines"
+    applied[4] !== "0005_continuity_engines" ||
+    applied[5] !== "0006_weixin_channel"
   ) {
     throw new Error(`unexpected migration run: ${JSON.stringify(run)}`);
   }
@@ -115,7 +117,7 @@ async function setupApiDatabase(): Promise<TestDatabase> {
  * Boot the full API host against a fresh container database.
  * Environment is scoped per-boot and restored afterwards.
  */
-export async function setupApi(): Promise<ApiTestContext> {
+export async function setupApi(weixin?:WeixinChannelPort): Promise<ApiTestContext> {
   const db = await setupApiDatabase();
 
   const prevEnv = {
@@ -130,7 +132,7 @@ export async function setupApi(): Promise<ApiTestContext> {
   let app: INestApplication | undefined;
   try {
     const { ThrottlerGuard } = await import("@nestjs/throttler");
-    const moduleRef = await Test.createTestingModule({
+    const builder = Test.createTestingModule({
       imports: [AppModule],
     })
       // Rate limiting is a production abuse control (NestJS's guard +
@@ -145,8 +147,9 @@ export async function setupApi(): Promise<ApiTestContext> {
       // provider (registered under its own class token in AppModule with
       // APP_GUARD as a useExisting alias), so overrideProvider hits it.
       .overrideProvider(ThrottlerGuard)
-      .useValue({ canActivate: () => true })
-      .compile();
+      .useValue({ canActivate: () => true });
+    if(weixin)builder.overrideProvider(WEIXIN_CHANNEL).useValue(weixin);
+    const moduleRef=await builder.compile();
     app = moduleRef.createNestApplication();
     applyAppDefaults(app);
     await app.init();
