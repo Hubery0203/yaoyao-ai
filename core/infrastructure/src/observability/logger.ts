@@ -12,6 +12,14 @@ import type { AppConfig } from "../config/env.js";
  * NEVER appear in logs (see T007-adjacent log-redaction gate, Phase 8).
  */
 const REDACT_PATHS = [
+  "OPENAI_IMAGE_API_KEY",
+  "*.OPENAI_IMAGE_API_KEY",
+  "OPENAI_API_KEY",
+  "*.OPENAI_API_KEY",
+  "aesKey",
+  "encryptQueryParam",
+  "*.aesKey",
+  "*.encryptQueryParam",
   "password",
   "password_hash",
   "token",

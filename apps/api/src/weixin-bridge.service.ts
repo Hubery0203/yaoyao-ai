@@ -1,3 +1,4 @@
+import {createPhotoDependencies,prepareWeixinPhoto} from './photo-delivery.js';
 /** One personal Weixin channel; the existing Core remains the conversation authority. */
 import {Inject,Injectable,Optional,type OnModuleInit} from '@nestjs/common';
 import {constants} from 'node:fs';
@@ -5,10 +6,10 @@ import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {TRANSACTION_MANAGER,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
+import {TRANSACTION_MANAGER,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
-import {loadConfig,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,type WeixinRow} from '@yaoyao/infrastructure';
+import {loadConfig,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
 import {LiteRuntimeService} from './lite-runtime.service.js';
 const sleep=(ms:number)=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
 export async function readWeixinCredentials(path:string):Promise<WeixinCredentials>{
@@ -46,7 +47,7 @@ export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,
 }
 @Injectable()
 export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
- private readonly config=loadConfig();private store?:WeixinStore;private client?:WeixinClient;private running?:Promise<void>;private stopped=false;private lastPoll=0;private lastSchedule=0;private lastHistory=0;
+ private readonly photoAbort=new AbortController();private readonly config=loadConfig();private store?:WeixinStore;private client?:WeixinClient;private running?:Promise<void>;private stopped=false;private lastPoll=0;private lastSchedule=0;private lastHistory=0;
  constructor(@Inject('YAOYAO_PG_POOL') private readonly pool:Pool,@Inject(CONVERSATION_ORCHESTRATOR) private readonly core:ConversationOrchestrator,@Inject(LiteRuntimeService) private readonly gate:LiteRuntimeService,
   @Inject(TRANSACTION_MANAGER)private readonly tx:TransactionManager,
   @Optional() @Inject('CONVERSATION_QUALITY') private readonly quality?:{record(entry:ReturnType<typeof summarizeTurnQuality>):void},
@@ -59,7 +60,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
   try{await this.store.open();}catch{await this.store.close();throw Error('WEIXIN_START_FAILED');}
   this.running=this.loop().catch(()=>{console.warn('Weixin channel stopped; operator review required.');});
  }
- async stop():Promise<void>{this.stopped=true;this.client?.close();await this.running;if(this.client){const shutdown=new WeixinClient(this.client.credentials);try{await shutdown.post('msg/notifystop',{},3000);}catch{/* Best effort lifecycle notification. */}finally{shutdown.close();}}await this.store?.close();}
+ async stop():Promise<void>{this.stopped=true;this.photoAbort.abort();this.client?.close();await this.running;if(this.client){const shutdown=new WeixinClient(this.client.credentials);try{await shutdown.post('msg/notifystop',{},3000);}catch{/* Best effort lifecycle notification. */}finally{shutdown.close();}}await this.store?.close();}
  private async loop():Promise<void>{
   const store=this.store!,client=this.client!;
   try{await client.post('msg/notifystart',{},10000);}catch(e){if(e instanceof WeixinError&&e.code==='AUTH_EXPIRED'){await store.error('AUTH_EXPIRED',true);return;}}
@@ -100,7 +101,20 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
     const row=await store.claimBatch();
     if(!row||['uncertain','failed'].includes(row.stage)||new Date(row.retry_at).getTime()>Date.now()){await sleep(500);continue;}
     if(!this.gate.acquire()){await sleep(500);continue;}
-    try{await processWeixinMessage(row,store,client,async(userId,text,key)=>{
+    try{
+    const photo=photoRequest(row.turn_text??row.text)!==null,dependencies=photo?createPhotoDependencies(this.config,store,client,this.photoAbort.signal):undefined;
+    if(photo&&row.reply===PHOTO_CAPTION&&!dependencies){await store.update(row.message_key,'skipped',{error:'PHOTOS_DISABLED'});continue;}
+    const sender=photo?{send:async(key:string,context:string,text:string)=>{
+     if(text!==PHOTO_CAPTION)return client.send(key,context,text);
+     const job=await new WeixinPhotoStore(store).get(row);
+     if(job?.state!=='uploaded'||!job.media)throw Error('PHOTO_MEDIA_MISSING');
+     return client.sendImage(key,context,job.media);
+    }}:client;
+    await processWeixinMessage(row,store,sender,async(userId,text,key)=>{
+     if(photo){
+      const reply=dependencies?await prepareWeixinPhoto(row,dependencies):'照片功能还没配置好，暂时不能发图。';
+      return this.tx.runAsUser(userId as UserId,tx=>recordPhotoResponse(tx,{userId:userId as UserId,text,requestId:key,reply}));
+     }
      this.gate.registerOwner(userId);
      const command=isMemoryCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinMemoryCommand(tx,{userId:userId as UserId,text,requestId:key})):null;
      if(command!==null)return command;

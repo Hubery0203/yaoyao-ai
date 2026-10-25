@@ -74,7 +74,7 @@ async function setupApiDatabase(): Promise<TestDatabase> {
   const run = await applyMigrations(adminPool, MIGRATIONS_DIR, "test-harness");
   const applied = run.applied;
   if (
-    applied.length !== 8 ||
+    applied.length !== 9 ||
     applied[0] !== "0001_initial_schema" ||
     applied[1] !== "0002_auth_lookup" ||
     applied[2] !== "0003_conversation_event_types" ||
@@ -82,7 +82,8 @@ async function setupApiDatabase(): Promise<TestDatabase> {
     applied[4] !== "0005_continuity_engines" ||
     applied[5] !== "0006_weixin_channel" ||
     applied[6] !== "0007_weixin_experience" ||
-    applied[7] !== "0008_companion_experience"
+    applied[7] !== "0008_companion_experience" ||
+    applied[8] !== "0009_weixin_photos"
   ) {
     throw new Error(`unexpected migration run: ${JSON.stringify(run)}`);
   }
@@ -156,9 +157,11 @@ export async function setupApi(weixin?:WeixinChannelPort): Promise<ApiTestContex
     applyAppDefaults(app);
     await app.init();
   } catch (err) {
-    process.env.DATABASE_URL = prevEnv.DATABASE_URL;
-    process.env.JWT_ACCESS_SECRET = prevEnv.JWT_ACCESS_SECRET;
-    process.env.NODE_ENV = prevEnv.NODE_ENV;
+    // Assigning undefined creates the literal "undefined" in a spawned process.
+    // Restore absent variables by deleting them so later worker-host checks see the original environment.
+    for(const [key,value] of Object.entries(prevEnv)){
+      if(value===undefined)delete process.env[key];else process.env[key]=value;
+    }
     await db.teardown();
     throw err;
   }
@@ -167,9 +170,11 @@ export async function setupApi(weixin?:WeixinChannelPort): Promise<ApiTestContex
   const teardown = async () => {
     await app?.close().catch(() => undefined);
     await db.teardown();
-    process.env.DATABASE_URL = prevEnv.DATABASE_URL;
-    process.env.JWT_ACCESS_SECRET = prevEnv.JWT_ACCESS_SECRET;
-    process.env.NODE_ENV = prevEnv.NODE_ENV;
+    // Assigning undefined creates the literal "undefined" in a spawned process.
+    // Restore absent variables by deleting them so later worker-host checks see the original environment.
+    for(const [key,value] of Object.entries(prevEnv)){
+      if(value===undefined)delete process.env[key];else process.env[key]=value;
+    }
   };
   return { app, http, db, teardown };
 }

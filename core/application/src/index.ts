@@ -77,3 +77,5 @@ export {recordAcceptedOutreach} from './usecases/outreach.js';
 export * from './experience.js';
 export * from './usecases/experience.js';
 export {handleWeixinMemoryCommand} from './usecases/weixin-memory.js';
+export {photoRequest,PHOTO_CAPTION,PHOTO_FAILURE} from './photos.js';
+export {recordPhotoResponse} from './usecases/photo-history.js';
