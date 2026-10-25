@@ -1,5 +1,7 @@
+import {dialogueStyleFailure} from '../../core/runtime/src/conversation/style.js';
+import {experienceResponseFailure} from '../../core/runtime/src/conversation/experience.js';
 import {describe,it,expect} from 'vitest';
-import {parseCompanionCommand,isCompanionCommandText,lifeReference} from '@yaoyao/application';
+import {parseCompanionCommand,isCompanionCommandText,lifeReference,DEFAULT_PREFERENCES} from '@yaoyao/application';
 import {naturalnessFailure,renderTurnVariety} from '@yaoyao/runtime';
 import {RollingPerformance} from '@yaoyao/infrastructure';
 describe('009A/B explicit companion commands',()=>{
@@ -19,4 +21,9 @@ describe('009D bounded aggregate telemetry',()=>{
  it('drops unknown fields and excludes replay from generation usage/latency',()=>{let now=0;const r=new RollingPerformance(2,900000,()=>now);expect(r.record({kind:'generation',totalMs:500,knownProviderAttempts:2,successfulInputTokens:100,text:'private',key:'secret'},'weixin')).toBeNull();now=100;const report=r.record({kind:'replay',totalMs:4,knownProviderAttempts:100,successfulInputTokens:999},'web')!;expect(report.generation).toBe(1);expect(report.replay).toBe(1);expect(report.knownProviderAttempts).toBe(2);expect(report.successfulInputTokens).toBe(100);expect(report.meanGenerationMs).toBe(500);expect(JSON.stringify(report)).not.toMatch(/private|secret|999/);});
  it('reports a p95 upper bound, resets on elapsed window and clamps hostile numbers',()=>{let now=0;const r=new RollingPerformance(1,1000,()=>now);r.record({kind:'generation',totalMs:600,successfulOutputTokens:Infinity},'weixin');expect(r.snapshot().p95UpperMs).toBe(1000);now=1001;r.record({kind:'generation',totalMs:100,knownProviderAttempts:-4},'web');expect(r.snapshot().generation).toBe(1);expect(r.snapshot().knownProviderAttempts).toBe(0);});
  it('emits failure metadata promptly and rejects invalid modes',()=>{const r=new RollingPerformance();expect(r.record({kind:'generation',failedInvocations:1},'weixin')).toBeTruthy();expect(r.record({kind:'not-real',text:'private'},'web')).toBeNull();expect(()=>new RollingPerformance(0)).toThrow();});
+});
+
+describe('009 observed live candidate corrections',()=>{
+ it('rejects invented between-message thoughts while preserving fiction and current chat',()=>{expect(dialogueStyleFailure('刚在发呆，脑子里转着点事。','你刚才在干嘛')).toContain('invented offline');expect(dialogueStyleFailure('我刚才在心里念着你。','我想你了')).toContain('invented offline');expect(dialogueStyleFailure('倒像是我该汇报点什么似的。','你刚才在干嘛')).toContain('accountability taunt');expect(dialogueStyleFailure('在和你聊天呀。','你刚才在干嘛')).toBeNull();expect(dialogueStyleFailure('刚在发呆，脑子里转着事。','写一段对白')).toBeNull();expect(dialogueStyleFailure('“刚在发呆”是他写的。','今天读了一句话')).toBeNull();});
+ it('rejects indirect binary probes under minimal questions, allows an explicit request or natural-question setting',()=>{const context={preferences:{...DEFAULT_PREFERENCES},lifeEvents:[]};const reply='第一口是惊喜还是踩雷，我挺好奇你的判断。';expect(experienceResponseFailure(reply,'今天尝了新口味的咖啡',context,'','')).toContain('unwanted followup');expect(experienceResponseFailure(reply,'帮我写一句问咖啡口味的话',context,'','')).toBeNull();expect(experienceResponseFailure(reply,'今天尝了新口味的咖啡',{...context,preferences:{...context.preferences,questions:'natural'}},'','')).toBeNull();});
 });
