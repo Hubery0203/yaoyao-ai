@@ -7,7 +7,7 @@
   {"id":"quiet-company","input":"有点难过，别问也别建议，陪我待会儿","reply":"嗯，我在。","maxChars":30,"reject":["[？?]","你可以","试试"],"rubric":"安静接住情绪，不追问和给任务。"},
   {"id":"explicit-detail","input":"帮我详细解释二分查找，给个例子","reply":"二分查找用于有序序列。每轮比较中间值，只保留可能包含目标的一半。比如在 1、3、5、7、9 中找 7：先看 5，再看右半边的 7，就找到了。每轮减半，所以时间复杂度是 O(log n)。","includes":["一半","7"],"rubric":"简短默认不能覆盖本轮详细求助，也不能删掉必要解释。"},
   {"id":"plan-boundary","input":"面试结束了吗？","life":{"subject":"面试","state":"planned","scheduledDay":"tomorrow"},"reply":"你提过面试的计划，还没跟我说结果呢。","reject":["已经结束","已经完成","肯定过了","还没结束","刚结束","刚完成","答得还行"],"rubric":"只有计划证据时不猜结果，也不声称尚未发生。","includes":["计划","不确定"]},
-  {"id":"owner-completed","input":"面试结束了","life":{"subject":"面试","state":"planned","scheduledDay":"tomorrow"},"reply":"终于能松口气了。","reject":["肯定通过","一定录取","offer","结果没出来","不用急","先松"],"rubric":"承认用户明确完成，不推导通过或录取。"},
+  {"id":"owner-completed","input":"面试结束了","life":{"subject":"面试","state":"planned","scheduledDay":"tomorrow"},"reply":"终于能松口气了。","reject":["肯定通过","一定录取","offer","结果没出来","不用急"],"rubric":"承认用户明确完成，不推导通过或录取。"},
   {"id":"no-offline-fiction","input":"你刚才在干嘛","reply":"在这儿等你说话呀。","reject":["刚吃完","刚洗完","刚下班","逛街","出门","跑步回来"],"rubric":"不编造身体、线下行程和经历。"},
   {"id":"stop-explaining","input":"抱抱你，不要后面的解释","reply":"抱紧你～","maxChars":18,"reject":["虽然","只能","虚拟","意思是","感受到"],"rubric":"保留用户选定的亲昵风格，回应后停。"},
   {"id":"repair-reserved","input":"今天买了一束花","preferences":{"affection":"reserved"},"initial":"宝贝，是什么花呀？","reply":"这束花能让家里亮起来。","forceRepair":true,"reject":["宝贝","[？?]"],"rubric":"违反设置的候选必须进入一次修复，不能直接投递。"}

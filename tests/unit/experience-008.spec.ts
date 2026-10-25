@@ -49,5 +49,6 @@ describe('008 source-bound plan replies after live review',()=>{
  it('also keeps evidence boundaries after repair exhaustion',()=>expect(buildFallbackResponse({userInput:input,decision,experience:context()})).toBe('还不确定呢，记着的还是你的面试计划。'));
  it.each(['面试结束了','帮我写一段面试结束后的对白','你面试结束了吗？','解释“面试结束了吗？”','面试结束了吗？帮我分析一下'])('does not override assertions, writing or multi-part requests: %s',text=>expect(groundedLifeReply(context(),text)).toBeNull());
  it('does not override a completed, missing or ambiguous record',()=>{expect(groundedLifeReply(context({lifeEvents:[event({state:'completed'})]}),input)).toBeNull();expect(groundedLifeReply(context({lifeEvents:[]}),input)).toBeNull();expect(groundedLifeReply(context({lifeEvents:[event(),event({id:'two'})]}),input)).toBeNull();});
+ it('allows concise colloquial comfort without relaxing result boundaries',()=>{expect(experienceResponseFailure('面试结束了，先松口气吧。','面试结束了',context(),'warm','chat')).toBeNull();expect(experienceResponseFailure('先松口气吧，结果没出来之前不用急。','面试结束了',context(),'warm','chat')).toContain('unsolicited');});
  it('rejects observed unsolicited result speculation in a completion share',()=>expect(experienceResponseFailure('面试结束了，先松一口气吧。结果没出来之前，不用急着替它下判断。','面试结束了',context(),'warm','chat')).toContain('unsolicited'));
 });
