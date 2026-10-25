@@ -34,13 +34,14 @@ export async function persistUserMessage(
     return { eventId: String(dup.event.eventId), duplicate: true };
   }
 
+  const timezone=tx.experience?(await tx.experience.preferences(input.userId)).settings.timezone:undefined;
   const event = DomainEvent.create({
     type: "USER_MESSAGE",
     actor: "USER",
     userId: input.userId,
     yaoyaoId: input.yaoyaoId,
     sessionId: input.sessionId as never,
-    payload: { text: input.text },
+    payload: { text: input.text,...(timezone?{timezone}:{}) },
     source: "CLIENT",
     correlationId: input.requestId,
   });
@@ -133,6 +134,7 @@ export async function loadConversationHistory(
     if (typeof payload.text !== "string") continue;
     turns.push({
       role: event.type === "USER_MESSAGE" ? "user" : "assistant",
+      ...(typeof event.payload.timezone==="string"?{timezone:event.payload.timezone}:{}),
       text: payload.text,
       occurredAt: event.occurredAt,
       sequence: aggregateSeq,

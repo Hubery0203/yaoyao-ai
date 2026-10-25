@@ -48,6 +48,7 @@ export interface AssembledContext {
 /** Input to ContextAssembler.assemble. */
 export interface AssembleInput {
   readonly data: PersonaData;
+  readonly additionalOverheadTokens?:number;
   readonly inputText: string;
   /**
    * Relevant memories for C4 (MVP-002D). When absent, C4 renders the
@@ -120,12 +121,12 @@ export class ContextAssembler {
 
     // Reserve P0 and state first, then retain a suffix of history. The old
     // all-or-nothing C6 could discard every recent turn on a long conversation.
-    const remaining=Math.max(0,this.budget.totalBudget-this.budget.reservedOutputTokens-(this.budget.reservedInputOverheadTokens??0)-layers.filter(l=>l.priority===0||l.id==='C2').reduce((n,l)=>n+l.estimatedTokenCost,0));
+    const remaining=Math.max(0,this.budget.totalBudget-this.budget.reservedOutputTokens-(this.budget.reservedInputOverheadTokens??0)-(input.additionalOverheadTokens??0)-layers.filter(l=>l.priority===0||l.id==='C2').reduce((n,l)=>n+l.estimatedTokenCost,0));
     const optionalCost=layers.filter(l=>l.priority===2).reduce((n,l)=>n+l.estimatedTokenCost,0);
     const historyTokens=Math.min(2400,Math.max(Math.min(512,remaining),remaining-optionalCost));
     const history=this.fitHistory(conversationHistory??[],historyTokens);
     layers[6]=history.layer;
-    const result = allocateBudget(layers, this.budget);
+    const result = allocateBudget(layers, {...this.budget,reservedInputOverheadTokens:(this.budget.reservedInputOverheadTokens??0)+(input.additionalOverheadTokens??0)});
     const byId = new Map(result.included.map((l) => [l.id, l]));
 
     return {

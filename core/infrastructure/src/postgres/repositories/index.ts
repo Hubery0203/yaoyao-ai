@@ -6,6 +6,7 @@ import type {
   PersistenceTransaction,
   TransactionManager,
 } from "@yaoyao/application";
+import {PostgresCompanionExperience} from "./experience.js";
 import { PostgresContinuityProcessingStore } from "./continuity-processing.js";
 import { PostgresContinuityJobStore } from "./continuity.js";
 import type { Db } from "../db.js";
@@ -34,6 +35,7 @@ export * from "./outbox.js";
 /** Assemble all repositories against a single transaction handle. */
 export function createRepositories(db: Db): PersistenceTransaction {
   return {
+    experience:new PostgresCompanionExperience(db),
     users: new PostgresUserRepository(db),
     aggregates: new PostgresYaoYaoAggregateRepository(db),
     relationships: new PostgresRelationshipRepository(db),

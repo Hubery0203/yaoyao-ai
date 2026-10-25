@@ -27,6 +27,7 @@ import type { ContinuityJobStore } from "../continuity.js";
 
 /** All repositories bound to a single transaction handle. */
 export interface PersistenceTransaction {
+  experience?: import("../../experience.js").CompanionExperienceStore;
   users: UserRepository;
   aggregates: YaoYaoAggregateRepository;
   relationships: RelationshipRepository;

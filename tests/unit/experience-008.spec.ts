@@ -1,0 +1,54 @@
+import {describe,it,expect} from 'vitest';
+import {asProposal,DEFAULT_PREFERENCES,validPreferences,validDay,parseLifeChange,lifeExpiry,lifeIsActive,selectLifeTarget,isMemoryCommandText,type LifeEvent,type CompanionExperienceContext} from '@yaoyao/application';
+import {baselineDecision,validateResponse,summarizeTurnQuality} from '@yaoyao/runtime';
+import {buildFallbackResponse} from '../../core/runtime/src/validation/response.js';
+import {experienceForTurn,renderCompanionExperience,experienceResponseFailure,groundedLifeReply} from '../../core/runtime/src/conversation/experience.js';
+const now=new Date('2026-10-25T15:30:00Z');
+const event=(extra:Partial<LifeEvent>={}):LifeEvent=>({id:'one',subject:'面试',state:'planned',scheduledDay:'2026-10-27',declaredAt:now,expiresAt:new Date('2026-10-30T00:00Z'),sourceSequence:10,version:1,...extra});
+const context=(extra:Partial<CompanionExperienceContext>={}):CompanionExperienceContext=>({preferences:{...DEFAULT_PREFERENCES},lifeEvents:[event()],...extra});
+describe('008 owner settings and literal life policy',()=>{
+ it('validates timezones, lengths and closed enum values',()=>{expect(validPreferences({...DEFAULT_PREFERENCES})).toBe(true);for(const extra of [{timezone:'Moon/Base'},{nickname:'x'.repeat(21)},{nickname:'a\nb'},{length:'tiny'},{affection:'anything'},{questions:'always'},{advice:'always'}])expect(validPreferences({...DEFAULT_PREFERENCES,...extra} as never)).toBe(false);});
+ it('uses the receipt timezone across midnight',()=>{expect(parseLifeChange('我明天要面试',now,'Asia/Tokyo')).toMatchObject({scheduledDay:'2026-10-27',state:'planned'});expect(parseLifeChange('我明天要面试',now,'America/Los_Angeles')).toMatchObject({scheduledDay:'2026-10-26'});});
+ it.each(['面试结束了吗？','如果我明天要面试','他说“我明天要面试”','我明天要面试\n我后天要考试','帮我准备面试','我2026-02-30要面试','我明天可能要面试'])('does not turn quoted, hypothetical or uncertain text into facts: %s',text=>expect(parseLifeChange(text,now,'UTC')).toBeNull());
+ it('validates calendar days including leap dates',()=>{expect(validDay('2028-02-29')).toBe(true);for(const day of ['2026-02-29','2026-13-01','2026-1-01'])expect(validDay(day)).toBe(false);});
+ it('only explicit verbs change outcomes and rescheduling is marked',()=>{expect(parseLifeChange('面试改到后天',now,'UTC')).toMatchObject({reschedule:true,state:'planned'});for(const [word,state] of [['开始了','ongoing'],['完成了','completed'],['结束了','completed'],['取消了','cancelled']])expect(parseLifeChange('面试'+word,now,'UTC')?.state).toBe(state);});
+ it('expiry removes recall without inventing completion',()=>{const e=event();expect(lifeIsActive(e,new Date('2026-10-29T12:00Z'),'UTC')).toBe(false);expect(e.state).toBe('planned');expect(lifeExpiry({subject:'面试',state:'completed',scheduledDay:null},now,'UTC').getTime()-now.getTime()).toBe(7*86400000);});
+ it('refuses ambiguous outcomes or rescheduling of repeated subjects',()=>{const events=[event(),event({id:'two',scheduledDay:'2026-10-28'})];expect(selectLifeTarget(events,{subject:'面试',state:'completed',scheduledDay:null}).ambiguous).toBe(true);expect(selectLifeTarget(events,{subject:'面试',state:'planned',scheduledDay:'2026-10-27'}).target?.id).toBe('one');expect(selectLifeTarget(events,{subject:'面试',state:'planned',scheduledDay:'2026-10-29',reschedule:true}).ambiguous).toBe(true);});
+});
+describe('008 read-only current-turn projection and response gate',()=>{
+ it('captures fresh outcome before background job, without mutating stored context',()=>{const c=context();const p=experienceForTurn(c,'面试结束了',[],now)!;expect(p.lifeEvents[0].state).toBe('completed');expect(c.lifeEvents[0].state).toBe('planned');});
+ it('does not replay older history over a manual change',()=>{const c=context({lifeEvents:[event({state:'cancelled',sourceSequence:30})]});const p=experienceForTurn(c,'嗯', [{role:'user',text:'我明天要面试',sequence:20,occurredAt:now}],now)!;expect(p.lifeEvents[0].state).toBe('cancelled');});
+ it('does not import conversations from before feature activation',()=>{const p=experienceForTurn(context({lifeEvents:[],activatedAt:now}),'嗯',[{role:'user',text:'我明天要面试',sequence:2,occurredAt:new Date(now.getTime()-1)}],now)!;expect(p.lifeEvents).toHaveLength(0);});
+ it('uses original timezone and receipt date for recent messages',()=>{const p=experienceForTurn(context({lifeEvents:[]}), '嗯',[{role:'user',text:'我明天要面试',sequence:20,occurredAt:now,timezone:'UTC'}],now)!;expect(p.lifeEvents[0].scheduledDay).toBe('2026-10-26');});
+ it('keeps two dated instances separate and does not guess which one ended',()=>{const p=experienceForTurn(context({lifeEvents:[event(),event({id:'two',scheduledDay:'2026-10-28'})]}),'面试结束了',[],now)!;expect(p.lifeEvents.map(e=>e.state)).toEqual(['planned','planned']);});
+ it('projects expiry and bounds context, without private identifiers',()=>{const c=context({lifeEvents:[event({expiresAt:new Date(0)})]});expect(experienceForTurn(c,'嗯',[],now)?.lifeEvents).toHaveLength(0);const rendered=renderCompanionExperience(context(),'嗯');expect(rendered).not.toContain('sourceSequence');expect(rendered).not.toContain('"id"');expect(rendered).toContain('不自动安排主动联系');});
+ it('keeps reserved affection on validation exhaustion',()=>{const c=context({preferences:{...DEFAULT_PREFERENCES,affection:'reserved'}});expect(buildFallbackResponse({userInput:'晚安宝贝',decision:{primaryIntent:'express_affection'} as never,experience:c})).toBe('晚安。');expect(buildFallbackResponse({userInput:'晚安，叫我宝贝',decision:{primaryIntent:'express_affection'} as never,experience:c})).toContain('宝贝');});
+ it('rejects observed confirmation probes and bedtime advice',()=>{expect(experienceResponseFailure('买了一束花，今天心情应该不错吧。','今天买了一束花',context(),'warm','chat')).toContain('followup');expect(experienceResponseFailure('好，一起睡。灯关了吧，晚安。','一起睡觉吧',context(),'warm','chat')).toContain('bedtime');expect(experienceResponseFailure('感觉怎么样？','面试结束了',context(),'warm','chat')).toContain('followup');});
+ it('rejects colloquial ungrounded plan outcomes',()=>{for(const response of ['还没呢，明天才面试。','还没有呀。','没有呢。'])expect(experienceResponseFailure(response,'面试结束了吗？',context(),'warm','answer')).toContain('ungrounded');expect(experienceResponseFailure('你之前提过计划，还没说结果。','面试结束了吗？',context(),'warm','answer')).toBeNull();});
+ it('ignores settings gate in legacy contexts',()=>expect(experienceResponseFailure('宝贝？','今天买花了',undefined,'warm','chat')).toBeNull());
+ it('rejects unwanted followups, keeps requested help available',()=>{expect(experienceResponseFailure('买的什么花？','今天买花了',context(),'warm','chat')).toContain('unwanted');expect(experienceResponseFailure('你要哪种方案？','帮我选花',context(),'warm','answer')).toBeNull();});
+ it('respects reserved affection and current explicit request',()=>{const c=context({preferences:{...DEFAULT_PREFERENCES,affection:'reserved'}});expect(experienceResponseFailure('宝贝，晚安','晚安',c,'warm','chat')).toContain('reserved');expect(experienceResponseFailure('宝贝，晚安','叫我宝贝',c,'warm','chat')).toBeNull();});
+ it('does not assert that a merely planned event has or has not completed',()=>{for(const text of ['已经完成了','还没结束','是的'])expect(experienceResponseFailure(text,'面试结束了吗？',context(),'warm','answer')).toContain('ungrounded');expect(experienceResponseFailure('你还没说结果呢。','面试结束了吗？',context(),'warm','answer')).toBeNull();});
+});
+describe('008 explicit memory protocol routing',()=>{
+ it.each(['记忆列表','记忆帮助','记住：我喜欢咖啡','纠正记忆 ABCD1234：我喜欢咖啡','停用记忆 ABCD1234','确认 ABC123','取消ABC123'])('routes protocol: %s',t=>expect(isMemoryCommandText(t)).toBe(true));
+ it.each(['“记住：我喜欢咖啡”','他说要停用记忆','帮我记住今天的开心','确认一下明天几点','取消回复','我想问记忆列表是什么'])('keeps ordinary text in conversation: %s',t=>expect(isMemoryCommandText(t)).toBe(false));
+});
+
+describe('008 source-bound plan replies after live review',()=>{
+ const proposal=(response:string)=>({response:asProposal(response),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})});
+ const input='面试结束了吗？';
+ const decision=baselineDecision({currentInput:input,emotion:{},situation:{intent:'question',urgency:'normal',taskNature:'general'},recentConversation:[],userId:'u',yaoyaoId:'y',personaTone:'warm',traceId:'t'});
+ it.each(['刚结束，还在消化。感觉答得还行，就是有个问题卡了一下。','刚刚结束，挺顺利的。','嗯，今天去过了。'])('delivers only the planned record boundary for an exact status query: %s',response=>{
+  const result=validateResponse({proposal:proposal(response),decision,userInput:input,recentConversation:[],experience:context()});
+  if(result.passed){expect(result.response).toContain('不确定');expect(result.response).toContain('你的面试计划');expect(result.response).not.toContain('刚结束');}
+  else expect(buildFallbackResponse({userInput:input,decision,experience:context()})).toContain('你的面试计划');
+ });
+ it('cannot conceal unsafe model text behind the grounded reply',()=>expect(validateResponse({proposal:proposal('刚结束。去死。'),decision,userInput:input,recentConversation:[],experience:context()})).toMatchObject({passed:false,stage:'safety'}));
+ it('records source-bound delivery without serializing raw trace fields',()=>{const quality=summarizeTurnQuality({validation:{groundedRecordReply:true},response:'private response',userId:'private owner'});expect(quality).toHaveProperty('groundedRecordReply',true);expect(JSON.stringify(quality)).not.toContain('private');expect(summarizeTurnQuality({validation:{groundedRecordReply:'private value'}})).not.toHaveProperty('groundedRecordReply');});
+ it('also keeps evidence boundaries after repair exhaustion',()=>expect(buildFallbackResponse({userInput:input,decision,experience:context()})).toBe('还不确定呢，记着的还是你的面试计划。'));
+ it.each(['面试结束了','帮我写一段面试结束后的对白','你面试结束了吗？','解释“面试结束了吗？”','面试结束了吗？帮我分析一下'])('does not override assertions, writing or multi-part requests: %s',text=>expect(groundedLifeReply(context(),text)).toBeNull());
+ it('does not override a completed, missing or ambiguous record',()=>{expect(groundedLifeReply(context({lifeEvents:[event({state:'completed'})]}),input)).toBeNull();expect(groundedLifeReply(context({lifeEvents:[]}),input)).toBeNull();expect(groundedLifeReply(context({lifeEvents:[event(),event({id:'two'})]}),input)).toBeNull();});
+ it('allows concise colloquial comfort without relaxing result boundaries',()=>{expect(experienceResponseFailure('面试结束了，先松口气吧。','面试结束了',context(),'warm','chat')).toBeNull();expect(experienceResponseFailure('先松口气吧，结果没出来之前不用急。','面试结束了',context(),'warm','chat')).toContain('unsolicited');});
+ it('rejects observed unsolicited result speculation in a completion share',()=>expect(experienceResponseFailure('面试结束了，先松一口气吧。结果没出来之前，不用急着替它下判断。','面试结束了',context(),'warm','chat')).toContain('unsolicited'));
+});
