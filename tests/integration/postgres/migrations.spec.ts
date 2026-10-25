@@ -101,7 +101,7 @@ describe.skipIf(!HAS_DOCKER)("migrations: empty database to schema head", () => 
     const { rows } = await db.adminPool.query<{ version: string; checksum: string }>(
       `SELECT version, checksum FROM schema_migrations`,
     );
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(9);
     expect(rows.map((r) => r.version)).toEqual([
       "0001_initial_schema",
       "0002_auth_lookup",
@@ -111,6 +111,7 @@ describe.skipIf(!HAS_DOCKER)("migrations: empty database to schema head", () => 
       "0006_weixin_channel",
       "0007_weixin_experience",
       "0008_companion_experience",
+      "0009_weixin_photos",
     ]);
     for (const row of rows) {
       expect(row.checksum).toMatch(/^[0-9a-f]{64}$/);
@@ -126,7 +127,7 @@ describe.skipIf(!HAS_DOCKER)("migrations: empty database to schema head", () => 
   it("passes the read-only startup compatibility check", async () => {
     const check = await checkSchemaCompatibility(db.adminPool, MIGRATIONS_DIR);
     expect(check.compatible).toBe(true);
-    expect(check.appliedHead).toBe("0008_companion_experience");
+    expect(check.appliedHead).toBe("0009_weixin_photos");
   });
 
   it("refuses a checksum-mismatched migration file", async () => {
@@ -151,6 +152,6 @@ describe.skipIf(!HAS_DOCKER)("migrations: empty database to schema head", () => 
   it("is idempotent: re-running applies nothing new", async () => {
     const run = await applyMigrations(db.adminPool, MIGRATIONS_DIR, "test");
     expect(run.applied).toEqual([]);
-    expect(run.alreadyApplied).toEqual(["0001_initial_schema", "0002_auth_lookup", "0003_conversation_event_types", "0004_continuity_jobs", "0005_continuity_engines", "0006_weixin_channel", "0007_weixin_experience", "0008_companion_experience"]);
+    expect(run.alreadyApplied).toEqual(["0001_initial_schema", "0002_auth_lookup", "0003_conversation_event_types", "0004_continuity_jobs", "0005_continuity_engines", "0006_weixin_channel", "0007_weixin_experience", "0008_companion_experience", "0009_weixin_photos"]);
   });
 });

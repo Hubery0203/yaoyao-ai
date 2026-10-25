@@ -1,6 +1,6 @@
 import {Client,type Pool,type PoolClient} from 'pg';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
-import {isMemoryCommandText,batchIsReady,isReplyCancellation,isOutreachStop,localOutreachClock,isQuietMinute,validateOutreachSettings,type OutreachSettings} from '@yaoyao/application';
+import {photoRequest,isMemoryCommandText,batchIsReady,isReplyCancellation,isOutreachStop,localOutreachClock,isQuietMinute,validateOutreachSettings,type OutreachSettings} from '@yaoyao/application';
 import type {IncomingText,WeixinCredentials} from './client.js';
 export interface WeixinRow {message_key:string;user_id:string;text:string;context_token:string;reply:string|null;stage:string;attempts:number;retry_at:Date;turn_text?:string|null;batch_key?:string|null;origin?:'reactive'|'proactive';created_at?:Date}
 export class WeixinStore {
@@ -41,6 +41,10 @@ export class WeixinStore {
      await db.query("INSERT INTO weixin_messages(bot_id,message_key,user_id,text,context_token,stage) VALUES($1,$2,$3,$4,$5,'skipped')",[this.credentials.botId,m.key,c.user_id,m.text,m.contextToken]);
      await db.query("UPDATE weixin_channels SET last_context_token=CASE WHEN last_inbound_at IS NULL OR last_inbound_at<=$3 THEN $2 ELSE last_context_token END,last_inbound_at=GREATEST(last_inbound_at,$3) WHERE bot_id=$1",[this.credentials.botId,m.contextToken,new Date(Math.min(m.time,Date.now()))]);
      continue;
+    }
+    if(m.text.trim()==='跳过照片'&&c.user_id){
+     await db.query("UPDATE weixin_messages m SET stage='skipped',last_error='OWNER_SKIPPED_PHOTO' WHERE bot_id=$1 AND stage IN ('pending','generating','ready','uncertain','failed') AND EXISTS(SELECT 1 FROM weixin_photos p WHERE p.bot_id=m.bot_id AND p.message_key=m.message_key)",[this.credentials.botId]);
+     reply='已跳过未完成的照片；不会重新生成或发送。';
     }
     const match=/^绑定\s+([A-F0-9]{16})$/i.exec(m.text.trim());
     if(match){
@@ -101,10 +105,10 @@ export class WeixinStore {
   const rows=(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') ORDER BY ordinal LIMIT 10 FOR UPDATE",[this.credentials.botId])).rows;
   const first=rows[0];if(!first)return;
   if(first.stage!=='pending'||first.reply||first.turn_text)return first;
-  if(isMemoryCommandText(first.text)){await db.query('UPDATE weixin_messages SET turn_text=$3 WHERE bot_id=$1 AND message_key=$2',[this.credentials.botId,first.message_key,first.text]);return {...first,turn_text:first.text};}
+  if(isMemoryCommandText(first.text)||photoRequest(first.text)!==null){await db.query('UPDATE weixin_messages SET turn_text=$3 WHERE bot_id=$1 AND message_key=$2',[this.credentials.botId,first.message_key,first.text]);return {...first,turn_text:first.text};}
   const batch=[first];let text=first.text;
   for(const row of rows.slice(1)){
-   if(isMemoryCommandText(row.text)||row.stage!=='pending'||row.reply||row.turn_text||row.origin!=='reactive'||row.user_id!==first.user_id||text.length+1+row.text.length>4000||row.created_at-first.created_at>6000)break;
+   if(isMemoryCommandText(row.text)||photoRequest(row.text)!==null||row.stage!=='pending'||row.reply||row.turn_text||row.origin!=='reactive'||row.user_id!==first.user_id||text.length+1+row.text.length>4000||row.created_at-first.created_at>6000)break;
    batch.push(row);text+='\n'+row.text;
   }
   if(!batchIsReady(first.created_at,batch.at(-1)!.created_at,now))return;

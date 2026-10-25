@@ -1,3 +1,4 @@
+import {validWeixinImage,type WeixinImage} from './media.js';
 import {randomBytes,createHash} from 'node:crypto';
 export interface WeixinCredentials {base:string;token:string;botId:string;ownerId:string}
 export interface IncomingText {key:string;text:string;contextToken:string;time:number}
@@ -49,5 +50,6 @@ export class WeixinClient {
   for await(const chunk of response.body){size+=chunk.length;if(size>524288)throw new WeixinError('RESPONSE_TOO_LARGE');chunks.push(chunk);}
   return parseWeixin(Buffer.concat(chunks).toString('utf8'));
  }
+ sendImage(key:string,contextToken:string,media:WeixinImage){if(!validWeixinImage(media))throw new WeixinError('INVALID_PHOTO_MEDIA');return this.post('sendmessage',{msg:{from_user_id:'',to_user_id:this.credentials.ownerId,client_id:'yaoyao-photo-'+key,message_type:2,message_state:2,context_token:contextToken,item_list:[{type:2,image_item:{media:{encrypt_query_param:media.encryptQueryParam,aes_key:Buffer.from(media.aesKey,'ascii').toString('base64'),encrypt_type:1},mid_size:media.ciphertextSize}}]}},15000);}
  send(key:string,contextToken:string,text:string){return this.post('sendmessage',{msg:{from_user_id:'',to_user_id:this.credentials.ownerId,client_id:'yaoyao-'+key,message_type:2,message_state:2,context_token:contextToken,item_list:[{type:1,text_item:{text}}]}},15000);}
 }

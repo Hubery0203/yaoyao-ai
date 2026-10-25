@@ -43,3 +43,8 @@ export { PostgresHealthProbe } from "./auth/health-probe.js";
 
 export * from "./weixin/client.js";
 export * from "./weixin/store.js";
+
+export * from './photos/files.js';
+export * from './photos/openai-image.js';
+export * from './weixin/media.js';
+export * from './weixin/photo-store.js';
