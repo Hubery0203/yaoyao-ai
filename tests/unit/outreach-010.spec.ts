@@ -27,3 +27,10 @@ describe('010 observed candidate corrections',()=>{
  it('finishes a grounded short choice without reopening another preference question',()=>{expect(experienceResponseFailure('茶好，想喝哪种？','茶吧',context,'','continue_topic',['YaoYao: 咖啡还是茶？'])).toContain('followup');expect(experienceResponseFailure('你指的是哪件事？','那个',context,'','continue_topic',['YaoYao: 咖啡还是茶？'])).toBeNull();});
  it('stops questions after refusal and distinguishes support from casual life advice',()=>{expect(experienceResponseFailure('那你想喝什么，都随你。','别再推荐奶茶了',context,'','')).toContain('followup');expect(experienceResponseFailure('先缓一缓吧。','面试结束了',context,'','')).toContain('advice');expect(experienceResponseFailure('先休息一下。','我受伤了怎么办',context,'serious','care')).toBeNull();});
 });
+
+describe('010 review false-positive and guidance consistency',()=>{
+ const context={preferences:{...DEFAULT_PREFERENCES},lifeEvents:[]};
+ it('allows a declarative free choice but rejects an actual question',()=>{expect(experienceResponseFailure('好，不推了。想喝什么由你定。','别再推荐奶茶了',context,'','')).toBeNull();expect(experienceResponseFailure('想喝什么你自己定，我就不念叨了。','别再推荐奶茶了',context,'','')).toBeNull();expect(experienceResponseFailure('那你想喝什么？','别再推荐奶茶了',context,'','')).toContain('followup');});
+ it('blocks rest-advice preambles before a technical answer, preserves requested rest advice',()=>{expect(naturalnessFailure('下班了就先松口气。二分查找要求有序。','我今天下班了\n帮我详细解释二分查找',[],'','answer')).toContain('advice');expect(naturalnessFailure('先休息，再观察。','帮我详细解释怎么休息',[],'','answer')).toBeNull();});
+ it('does not attach a rest assignment to a completed share',()=>expect(experienceResponseFailure('先让自己松口气。','面试结束了',context,'','')).toContain('advice'));
+});

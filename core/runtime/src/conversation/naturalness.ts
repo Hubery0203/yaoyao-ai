@@ -9,6 +9,8 @@ const opening=(text:string)=>(text.trim().split(/[，,。！？!?；;\n]/u)[0]??
 /** Whole original candidate is checked; no silent deletion or replacement of unsafe text. */
 export function naturalnessFailure(response:string,input:string,recent:readonly string[],mode='',intent=''):string|null{
  const style=conversationStyle(input),literal=unquotedText(input);
+ const firstSentence=unquotedText(response).split(/[。！？!?\n]/u)[0]??'';
+ if(style.detailed&&!/(?:休息|疲劳|难受|焦虑|受伤|疼痛|生病|睡眠)/u.test(literal)&&/(?:先(?:让自己松口气|松口气|缓一缓|歇|休息)|好好(?:休息|松口气))/u.test(firstSentence))return 'experience: unsolicited life advice';
  const writing=/^(?:请|帮我)?(?:翻译|改写|写(?:个|一段|一篇|一个)?(?:故事|小说|对白))|逐字|引用|原话/u.test(literal);
  if(!writing&&!style.detailed&&!/[？?]|帮我|请问|为什么|怎么办/u.test(literal)&&!['comforting','serious'].includes(mode)&&!['comfort','care','answer'].includes(intent)&&!explicitlyRequestsRepetition(input)){
   const lines=literal.split(/\n+/u).map(t=>t.trim()).filter(Boolean);

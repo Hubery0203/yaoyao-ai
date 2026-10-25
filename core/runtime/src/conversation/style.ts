@@ -22,6 +22,13 @@ export function unquotedText(text:string):string {
   return text.replace(/“[^”]*”|‘[^’]*’|「[^」]*」|『[^』]*』|"[^"\n]*"|`[^`]*`/gu,'');
 }
 
+export function isSuggestionRefusal(input:string):boolean {
+ return /(?:^|[，,。！？!?；;\n])\s*(?:别|不要|不用)(?:再)?(?:建议|推荐)/u.test(unquotedText(input));
+}
+export function resolvedShortChoice(input:string,recent:readonly string[]):boolean {
+ const last=recent.filter(t=>t.startsWith('YaoYao: ')).at(-1)??'',answer=unquotedText(input).trim().replace(/[吧呀啊呢。！!\s]+$/u,'');
+ return input.length<=12&&answer.length>0&&!/[？?]|帮我|请问|为什么|怎么/u.test(input)&&/[？?]/u.test(last)&&(last.includes(answer)||/^(?:都行|随便|都可以|前者|后者|第[一二123]个)$/u.test(answer));
+}
 export function conversationStyle(input:string):ConversationStyle {
   const text=unquotedText(input).trim();
   const topicShift=/(?:^|[，,。！!；;\n])\s*(?:换个话题|换一个话题|换话题|先不聊这个|不聊这个了|这事先放一边|说点别的|对了[，,])/u.test(text);
