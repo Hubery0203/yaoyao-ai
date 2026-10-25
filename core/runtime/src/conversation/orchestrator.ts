@@ -54,7 +54,7 @@ import { AIRouter } from "../router/router.js";
 import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 import {renderConversationContinuity} from "./continuity.js";
-import {experienceForTurn,renderCompanionExperience} from "./experience.js";
+import {experienceForTurn,renderCompanionExperience,groundedLifeReply} from "./experience.js";
 import {conversationStyle} from './style.js';
 import {projectTurnMemories,focusDisclosureHistory,selectedMemoryEvidence} from './memory-context.js';
 import {validationFailureSummary} from "./quality.js";
@@ -422,6 +422,7 @@ export class ConversationOrchestrator {
       providerFallbackUsed:telemetry.fallbackUsed||repairProviderFallback,
       fallbackUsed,
       finalResponseAccepted: true,
+      ...(groundedLifeReply(experience,input.text)?{groundedRecordReply:true}:{}),
     };
     executedSteps.push("behavior-validation");
 

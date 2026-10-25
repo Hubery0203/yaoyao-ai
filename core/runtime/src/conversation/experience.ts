@@ -40,6 +40,8 @@ export function experienceResponseFailure(response:string,input:string,context:C
  const style=conversationStyle(input),text=unquotedText(response),p=context.preferences;
  const task=/[？?]|帮我|请问|为什么|怎么|如何|想问|问你|需要帮助|救命|出事|吃了.{0,8}(?:药|毒)/u.test(input)||style.detailed||['comforting','serious'].includes(mode)||['comfort','care','answer'].includes(intent);
  if(p.questions==='minimal'&&!task&&(style.casualShare||style.acknowledgment||!!parseLifeChange(input,new Date(),p.timezone))&&/[？?]|(?:要不要|是不是|什么样的|哪种|什么口味)|(?:应该|一定|还|也|挺|很|不错|开心)(?:吧|吗)[。！!～~\s]*$/u.test(text))return 'experience: unwanted followup';
+ const lifeStatement=parseLifeChange(input,new Date(),p.timezone);
+ if(!task&&p.advice==='on_request'&&lifeStatement?.state==='completed'&&/(?:不用急|别急|先(?:松|歇|休息)|结果(?:还没|没|尚未)(?:出来|公布)|等(?:待)?结果)/u.test(text))return 'experience: unsolicited life advice';
  if(!task&&style.affectionateClosing&&/(?:灯关了|别硬撑|先把自己放平|记得.{0,10}(?:睡|休息|盖被)|你(?:先|要|该).{0,6}(?:睡|休息))/u.test(text))return 'experience: unwanted bedtime advice';
  const explicitAffection=/(?:叫我|喊我|称呼我).{0,10}(?:宝贝|亲爱的|老婆|老公)|(?:亲昵|甜)(?:一点|点)/u.test(input);
  if(p.affection==='reserved'&&!explicitAffection&&/(?:宝贝|亲爱的|老婆|老公)/u.test(text)&&!task)return 'experience: reserved affection ignored';
@@ -51,4 +53,17 @@ export function experienceResponseFailure(response:string,input:string,context:C
   }
  }
  return null;
+}
+
+/** A narrow record query has a source-bound answer, independent of model phrasing.
+ * Only the known planned record is described; we do not claim that the owner
+ * never mentioned an outcome elsewhere or that the activity has not happened.
+ */
+export function groundedLifeReply(context:CompanionExperienceContext|undefined,input:string):string|null {
+ if(!context)return null;
+ const m=/^(?:我的|我|之前的|那次)?(面试|考试|出差|旅行|搬家|体检|开会|项目)(?:结束了吗|结束没|结束了没|完成了吗|完成没|取消了吗|开始了吗|怎么样了)[？?]?$/u.exec(input.trim());
+ if(!m)return null;
+ const matches=context.lifeEvents.filter(e=>e.subject===m[1]);
+ if(matches.length!==1||matches[0].state!=='planned')return null;
+ return '还不确定呢，记着的还是你的'+m[1]+'计划。';
 }

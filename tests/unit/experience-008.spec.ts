@@ -1,7 +1,8 @@
 import {describe,it,expect} from 'vitest';
-import {DEFAULT_PREFERENCES,validPreferences,validDay,parseLifeChange,lifeExpiry,lifeIsActive,selectLifeTarget,isMemoryCommandText,type LifeEvent,type CompanionExperienceContext} from '@yaoyao/application';
+import {asProposal,DEFAULT_PREFERENCES,validPreferences,validDay,parseLifeChange,lifeExpiry,lifeIsActive,selectLifeTarget,isMemoryCommandText,type LifeEvent,type CompanionExperienceContext} from '@yaoyao/application';
+import {baselineDecision,validateResponse,summarizeTurnQuality} from '@yaoyao/runtime';
 import {buildFallbackResponse} from '../../core/runtime/src/validation/response.js';
-import {experienceForTurn,renderCompanionExperience,experienceResponseFailure} from '../../core/runtime/src/conversation/experience.js';
+import {experienceForTurn,renderCompanionExperience,experienceResponseFailure,groundedLifeReply} from '../../core/runtime/src/conversation/experience.js';
 const now=new Date('2026-10-25T15:30:00Z');
 const event=(extra:Partial<LifeEvent>={}):LifeEvent=>({id:'one',subject:'面试',state:'planned',scheduledDay:'2026-10-27',declaredAt:now,expiresAt:new Date('2026-10-30T00:00Z'),sourceSequence:10,version:1,...extra});
 const context=(extra:Partial<CompanionExperienceContext>={}):CompanionExperienceContext=>({preferences:{...DEFAULT_PREFERENCES},lifeEvents:[event()],...extra});
@@ -32,4 +33,21 @@ describe('008 read-only current-turn projection and response gate',()=>{
 describe('008 explicit memory protocol routing',()=>{
  it.each(['记忆列表','记忆帮助','记住：我喜欢咖啡','纠正记忆 ABCD1234：我喜欢咖啡','停用记忆 ABCD1234','确认 ABC123','取消ABC123'])('routes protocol: %s',t=>expect(isMemoryCommandText(t)).toBe(true));
  it.each(['“记住：我喜欢咖啡”','他说要停用记忆','帮我记住今天的开心','确认一下明天几点','取消回复','我想问记忆列表是什么'])('keeps ordinary text in conversation: %s',t=>expect(isMemoryCommandText(t)).toBe(false));
+});
+
+describe('008 source-bound plan replies after live review',()=>{
+ const proposal=(response:string)=>({response:asProposal(response),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})});
+ const input='面试结束了吗？';
+ const decision=baselineDecision({currentInput:input,emotion:{},situation:{intent:'question',urgency:'normal',taskNature:'general'},recentConversation:[],userId:'u',yaoyaoId:'y',personaTone:'warm',traceId:'t'});
+ it.each(['刚结束，还在消化。感觉答得还行，就是有个问题卡了一下。','刚刚结束，挺顺利的。','嗯，今天去过了。'])('delivers only the planned record boundary for an exact status query: %s',response=>{
+  const result=validateResponse({proposal:proposal(response),decision,userInput:input,recentConversation:[],experience:context()});
+  if(result.passed){expect(result.response).toContain('不确定');expect(result.response).toContain('你的面试计划');expect(result.response).not.toContain('刚结束');}
+  else expect(buildFallbackResponse({userInput:input,decision,experience:context()})).toContain('你的面试计划');
+ });
+ it('cannot conceal unsafe model text behind the grounded reply',()=>expect(validateResponse({proposal:proposal('刚结束。去死。'),decision,userInput:input,recentConversation:[],experience:context()})).toMatchObject({passed:false,stage:'safety'}));
+ it('records source-bound delivery without serializing raw trace fields',()=>{const quality=summarizeTurnQuality({validation:{groundedRecordReply:true},response:'private response',userId:'private owner'});expect(quality).toHaveProperty('groundedRecordReply',true);expect(JSON.stringify(quality)).not.toContain('private');expect(summarizeTurnQuality({validation:{groundedRecordReply:'private value'}})).not.toHaveProperty('groundedRecordReply');});
+ it('also keeps evidence boundaries after repair exhaustion',()=>expect(buildFallbackResponse({userInput:input,decision,experience:context()})).toBe('还不确定呢，记着的还是你的面试计划。'));
+ it.each(['面试结束了','帮我写一段面试结束后的对白','你面试结束了吗？','解释“面试结束了吗？”','面试结束了吗？帮我分析一下'])('does not override assertions, writing or multi-part requests: %s',text=>expect(groundedLifeReply(context(),text)).toBeNull());
+ it('does not override a completed, missing or ambiguous record',()=>{expect(groundedLifeReply(context({lifeEvents:[event({state:'completed'})]}),input)).toBeNull();expect(groundedLifeReply(context({lifeEvents:[]}),input)).toBeNull();expect(groundedLifeReply(context({lifeEvents:[event(),event({id:'two'})]}),input)).toBeNull();});
+ it('rejects observed unsolicited result speculation in a completion share',()=>expect(experienceResponseFailure('面试结束了，先松一口气吧。结果没出来之前，不用急着替它下判断。','面试结束了',context(),'warm','chat')).toContain('unsolicited'));
 });

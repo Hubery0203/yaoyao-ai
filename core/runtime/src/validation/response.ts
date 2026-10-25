@@ -1,6 +1,6 @@
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse} from '../conversation/style.js';
-import {experienceResponseFailure} from '../conversation/experience.js';
+import {experienceResponseFailure,groundedLifeReply} from '../conversation/experience.js';
 import {hasContradictedUserFact,hasUnsupportedPlanOutcome} from '../conversation/memory-context.js';
 /**
  * Response Validation — MVP-002F.
@@ -234,7 +234,7 @@ export function validateResponse(
     };
   }
 
-  return { passed: true, response: ['normal','intimate'].includes(decision.conversationMode)&&['express_affection','acknowledge'].includes(decision.primaryIntent)?briefAffectionResponse(responseText,userInput):responseText };
+  return { passed: true, response: groundedLifeReply(input.experience,userInput)??(['normal','intimate'].includes(decision.conversationMode)&&['express_affection','acknowledge'].includes(decision.primaryIntent)?briefAffectionResponse(responseText,userInput):responseText) };
 }
 
 /**
@@ -327,6 +327,7 @@ export function buildFallbackResponse(input: {
   experience?:import("@yaoyao/application").CompanionExperienceContext;
 }): string {
   const { decision } = input;
+  const grounded=groundedLifeReply(input.experience,input.userInput);if(grounded)return grounded;
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
   if(style.farewell)return '好，回头聊～';
