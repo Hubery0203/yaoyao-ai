@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {DEFAULT_PREFERENCES,validPreferences,validDay,parseLifeChange,lifeExpiry,lifeIsActive,selectLifeTarget,isMemoryCommandText,type LifeEvent,type CompanionExperienceContext} from '@yaoyao/application';
+import {buildFallbackResponse} from '../../core/runtime/src/validation/response.js';
 import {experienceForTurn,renderCompanionExperience,experienceResponseFailure} from '../../core/runtime/src/conversation/experience.js';
 const now=new Date('2026-10-25T15:30:00Z');
 const event=(extra:Partial<LifeEvent>={}):LifeEvent=>({id:'one',subject:'面试',state:'planned',scheduledDay:'2026-10-27',declaredAt:now,expiresAt:new Date('2026-10-30T00:00Z'),sourceSequence:10,version:1,...extra});
@@ -20,6 +21,7 @@ describe('008 read-only current-turn projection and response gate',()=>{
  it('uses original timezone and receipt date for recent messages',()=>{const p=experienceForTurn(context({lifeEvents:[]}), '嗯',[{role:'user',text:'我明天要面试',sequence:20,occurredAt:now,timezone:'UTC'}],now)!;expect(p.lifeEvents[0].scheduledDay).toBe('2026-10-26');});
  it('keeps two dated instances separate and does not guess which one ended',()=>{const p=experienceForTurn(context({lifeEvents:[event(),event({id:'two',scheduledDay:'2026-10-28'})]}),'面试结束了',[],now)!;expect(p.lifeEvents.map(e=>e.state)).toEqual(['planned','planned']);});
  it('projects expiry and bounds context, without private identifiers',()=>{const c=context({lifeEvents:[event({expiresAt:new Date(0)})]});expect(experienceForTurn(c,'嗯',[],now)?.lifeEvents).toHaveLength(0);const rendered=renderCompanionExperience(context(),'嗯');expect(rendered).not.toContain('sourceSequence');expect(rendered).not.toContain('"id"');expect(rendered).toContain('不自动安排主动联系');});
+ it('keeps reserved affection on validation exhaustion',()=>{const c=context({preferences:{...DEFAULT_PREFERENCES,affection:'reserved'}});expect(buildFallbackResponse({userInput:'晚安宝贝',decision:{primaryIntent:'express_affection'} as never,experience:c})).toBe('晚安。');expect(buildFallbackResponse({userInput:'晚安，叫我宝贝',decision:{primaryIntent:'express_affection'} as never,experience:c})).toContain('宝贝');});
  it('ignores settings gate in legacy contexts',()=>expect(experienceResponseFailure('宝贝？','今天买花了',undefined,'warm','chat')).toBeNull());
  it('rejects unwanted followups, keeps requested help available',()=>{expect(experienceResponseFailure('买的什么花？','今天买花了',context(),'warm','chat')).toContain('unwanted');expect(experienceResponseFailure('你要哪种方案？','帮我选花',context(),'warm','answer')).toBeNull();});
  it('respects reserved affection and current explicit request',()=>{const c=context({preferences:{...DEFAULT_PREFERENCES,affection:'reserved'}});expect(experienceResponseFailure('宝贝，晚安','晚安',c,'warm','chat')).toContain('reserved');expect(experienceResponseFailure('宝贝，晚安','叫我宝贝',c,'warm','chat')).toBeNull();});
