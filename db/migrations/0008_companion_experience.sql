@@ -36,3 +36,11 @@ DO $$ DECLARE t text; BEGIN
   EXECUTE format('GRANT SELECT,INSERT,UPDATE ON %I TO yaoyao_app',t);
  END LOOP;
 END $$;
+
+-- A literal migration-time epoch; runtime does not gain schema_migrations privileges.
+DO $$ BEGIN
+ EXECUTE format('CREATE FUNCTION public.companion_experience_activation() RETURNS timestamptz LANGUAGE sql STABLE SET search_path=pg_catalog AS %L',
+   format('SELECT %L::timestamptz',clock_timestamp()));
+END $$;
+REVOKE ALL ON FUNCTION public.companion_experience_activation() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.companion_experience_activation() TO yaoyao_app;

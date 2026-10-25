@@ -100,7 +100,8 @@ export class WeixinStore {
   if(c.paused||c.auth_expired)return;
   const rows=(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') ORDER BY ordinal LIMIT 10 FOR UPDATE",[this.credentials.botId])).rows;
   const first=rows[0];if(!first)return;
-  if(first.stage!=='pending'||first.reply||first.turn_text||isMemoryCommandText(first.text))return first;
+  if(first.stage!=='pending'||first.reply||first.turn_text)return first;
+  if(isMemoryCommandText(first.text)){await db.query('UPDATE weixin_messages SET turn_text=$3 WHERE bot_id=$1 AND message_key=$2',[this.credentials.botId,first.message_key,first.text]);return {...first,turn_text:first.text};}
   const batch=[first];let text=first.text;
   for(const row of rows.slice(1)){
    if(isMemoryCommandText(row.text)||row.stage!=='pending'||row.reply||row.turn_text||row.origin!=='reactive'||row.user_id!==first.user_id||text.length+1+row.text.length>4000||row.created_at-first.created_at>6000)break;
