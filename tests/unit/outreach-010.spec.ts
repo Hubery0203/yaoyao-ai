@@ -1,5 +1,6 @@
+import {experienceResponseFailure} from '../../core/runtime/src/conversation/experience.js';
 import {describe,it,expect} from 'vitest';
-import {parseOutreachCommand,outreachDue,isOutreachStop,formatMinute} from '@yaoyao/application';
+import {parseOutreachCommand,outreachDue,isOutreachStop,formatMinute,DEFAULT_PREFERENCES} from '@yaoyao/application';
 import {naturalnessFailure,renderTurnVariety} from '@yaoyao/runtime';
 import {conversationStyle} from '../../core/runtime/src/conversation/style.js';
 describe('010B exact Weixin controls',()=>{
@@ -18,4 +19,11 @@ describe('010A short bursts and rejected suggestions',()=>{
  it('recognizes one multi-line ordinary share without treating a help request as casual',()=>{expect(conversationStyle('我今天终于下班了\n累死了').casualShare).toBe(true);expect(renderTurnVariety('我今天终于下班了\n累死了',[])).toContain('连续短消息');expect(conversationStyle('我今天下班了\n帮我详细解释二分查找').casualShare).toBe(false);});
  it('rejects whole burst echo, allows requested quote and nonidentical reply',()=>{const text='我今天终于下班了\n累死了';expect(naturalnessFailure(text,text,[])).toContain('burst echo');expect(naturalnessFailure(text,'原话重复：'+text,[])).toBeNull();expect(naturalnessFailure('总算忙完了。',text,[])).toBeNull();});
  it('does not reoffer a literal rejected suggestion, keeps negation and writing intact',()=>{expect(naturalnessFailure('要不喝一杯奶茶。','别再推荐奶茶了',[])).toContain('revoked suggestion');expect(naturalnessFailure('好，不推荐奶茶了。','别再推荐奶茶了',[])).toBeNull();expect(naturalnessFailure('推荐奶茶。','如果别再推荐奶茶了会怎样',[])).toBeNull();expect(naturalnessFailure('推荐奶茶。','为什么别再推荐奶茶了？',[],'','answer')).toBeNull();expect(naturalnessFailure('推荐咖啡。','别再推荐奶茶了',[])).toBeNull();expect(naturalnessFailure('推荐奶茶。','写一段对白：别再推荐奶茶了',[])).toBeNull();});
+});
+
+describe('010 observed candidate corrections',()=>{
+ const context={preferences:{...DEFAULT_PREFERENCES},lifeEvents:[]};
+ it('keeps last share after a topic-shift line casual',()=>expect(conversationStyle('换个话题\n今天买了草莓').casualShare).toBe(true));
+ it('finishes a grounded short choice without reopening another preference question',()=>{expect(experienceResponseFailure('茶好，想喝哪种？','茶吧',context,'','continue_topic',['YaoYao: 咖啡还是茶？'])).toContain('followup');expect(experienceResponseFailure('你指的是哪件事？','那个',context,'','continue_topic',['YaoYao: 咖啡还是茶？'])).toBeNull();});
+ it('stops questions after refusal and distinguishes support from casual life advice',()=>{expect(experienceResponseFailure('那你想喝什么，都随你。','别再推荐奶茶了',context,'','')).toContain('followup');expect(experienceResponseFailure('先缓一缓吧。','面试结束了',context,'','')).toContain('advice');expect(experienceResponseFailure('先休息一下。','我受伤了怎么办',context,'serious','care')).toBeNull();});
 });

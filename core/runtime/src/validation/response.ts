@@ -201,7 +201,7 @@ export function validateResponse(
 
   if(hasPrematureMemoryReceipt(responseText,userInput))return {passed:false,stage:"continuity",reason:"continuity: premature memory receipt"};
 
-  const experienceFailure=experienceResponseFailure(responseText,userInput,input.experience,decision.conversationMode,decision.primaryIntent);
+  const experienceFailure=experienceResponseFailure(responseText,userInput,input.experience,decision.conversationMode,decision.primaryIntent,input.recentConversation);
   if(experienceFailure)return {passed:false,stage:"continuity",reason:experienceFailure};
 
   // Stage 6 — Safety (§23).

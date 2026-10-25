@@ -12,3 +12,5 @@ Status: ready for scoped live evaluation; not deployed, GitHub CI pending.
 - No VPS write, proxy change, external message, offsite setup or image API request.
 
 Single local suite success is not a measured pass^3 reliability result or proof of naturalness. Unit/rule checks cannot establish open-ended quality. Manual security review checked source ownership, scoped RLS, atomic action/reply commits, confirmation/CAS, clock handling and cancellation boundaries; CI and live acceptance still gate publishing.
+
+Live candidate review: first12 cases/15 provider attempts rejected pending corrections (extra followups/advice and a too-literal lexical check). Three regression tests added; all738 unit +2 contracts passed. Original PG/e2e/Node results above precede these runtime-only review corrections; CI will rerun the full matrix. Remaining9 attempts may repair only the original scenarios. The binary-search grader now accepts middle-point synonyms and still requires manual factual review.

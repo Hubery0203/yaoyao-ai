@@ -37,7 +37,7 @@ export function conversationStyle(input:string):ConversationStyle {
   const disclosure=!directedAffection&&!/[？?]|为什么|怎么|请问/u.test(text)&&(sharedPlan||/^我(?:现在|最近|今天|今晚|一直)?(?:不再喜欢|不喜欢|喜欢|爱喝|不再喝|不喝|不吃|住在|叫|刚吃了|刚喝了)[^，,。！？!?]{1,100}[。！!]?$/u.test(text));
   const farewell=/^(?:我)?(?:先去忙(?:了)?|去忙了|先忙了|回头聊|待会聊|下次聊|拜拜|走啦|我出门了)[。！!～~\s]*$/u.test(text);
   const burst=text.split(/\n+/u).map(t=>t.trim()).filter(Boolean);
-  const burstShare=!detailed&&burst.length>1&&burst.length<=10&&burst.every(t=>t.length<=100)&&/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个)/u.test(burst[0])&&!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text);
+  const burstShare=!detailed&&burst.length>1&&burst.length<=10&&burst.every(t=>t.length<=100)&&burst.some(line=>/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个)/u.test(line))&&!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text);
   const casualShare=burstShare||!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text)&&text.length<=100&&/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个).{1,80}$/u.test(text);
   const styleFeedback=/(?:太像|不像|别像|不要像).{0,8}(?:AI|人工智能|机器人|客服)|(?:说话|聊天|回答).{0,8}(?:自然点|自然一点|像真人)|(?:别|不要)(?:这么|那么)?(?:机械|官方|模板化)|废话太多|不要后面的解释|别解释了/iu.test(text);
   const bedtimeInvite=/^(?:我们)?(?:一起)?睡(?:觉)?(?:吧|了)[。！!～~]*$/u.test(text);
@@ -56,7 +56,7 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
     '接话尺度示意（不照抄）：对方说今天很喜欢你，可以直接回一句喜欢；对方说河边的风舒服，可以聊那阵风，不补写自己此刻的生活。没有具体内容可加时，短一句就够。',
     '记忆帮助理解当前内容，不需要展示核对过程。普通分享中不解释资料来源、计划与事实的区别或记忆保存；被问到事实才回答必要的边界。',
     '用户的新分享本身就是话题，之前没答的问题可以自然放下；用户主动接回才继续。普通聊天直接写消息，不写标题、总结、服务承诺或改进清单。',
-    ...(style.casualShare?['这是日常小分享：抓住具体的一点自然接话，通常一句具体回应就够。无需重复整件事、提炼人生道理、解释情绪或送上建议；不附加“先歇一会儿吧”等生活安排，也不补问花色、口味来续聊。用户明确求助时再展开。']:[]),
+    ...(style.casualShare?['这是日常小分享：抓住具体的一点自然接话，通常一句具体回应就够。无需重复整件事、提炼人生道理、解释情绪或送上建议；不附加“先歇一会儿吧”“先缓一缓”等生活安排，也不补问花色、口味来续聊。用户明确求助时再展开。']:[]),
     ...(style.farewell?['对方要离开或忙别的：简短道别，不追问、不挽留、不安排对方回来汇报。']:[]),
     ...(style.briefAffection?['这是亲昵接话：默认一句简短、直接的亲昵回应，称呼可以自然保留。不复述对方心情，不讲“这句话让我/我听了觉得/我接得很开心”，不反问考验、不要求补说爱意，不扩写成场景对白。']:[]),
     ...(style.affectionateClosing?['对方准备睡觉：轻轻道晚安就收住，不再追问、不挽留、不声称关灯盖被或同床的实际动作。']:[]),
@@ -68,7 +68,7 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
     ...(style.acknowledgment?['这是简单招呼或回应：自然接一句即可，不重讲上一轮建议，不另起一个问题。']:[]),
     ...(style.disclosure?['这是个人分享：接住这个内容即可，不自动科普、做计划或返回旧问题。']:[]),
     ...(style.brief?['用户明确要求简短：优先一句直接回答；必要的事实边界仍保留。']:[]),
-    ...(style.detailed?['用户明确需要详细内容：给足所需信息，结构按任务需要，不能套用日常短回复。']:[]),
+    ...(style.detailed?['用户明确需要详细内容：直接回答求助，不先安排用户休息。给足所需信息，结构按任务需要；区分量级与精确上界，不把近似复杂度说成精确次数。不能套用日常短回复。']:[]),
     ...(style.styleFeedback?['用户正在反馈表达太像 AI：简短承接，立刻自然地聊，不列改进清单、不承诺“我会调整我的风格”。']:[]),
   ].join('\n');
 }
