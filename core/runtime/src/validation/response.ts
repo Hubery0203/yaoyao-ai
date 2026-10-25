@@ -357,7 +357,7 @@ export function buildRepairInstruction(
     `[REPAIR — your previous response failed validation at stage "${failureStage}": ${reason}]`,
     `Regenerate the response. Keep: 沈知遥 identity, deep_partner relationship (never breakup/terminate), natural warm tone.`,
     ...(reason.includes("premature memory receipt")?["Acknowledge the fact naturally without claiming storage: do not say 记住了/记下了/已经保存. You may say you heard or recall what the user said."]:[]),
-    ...(reason.includes('invented offline activity')?['Remove the invented first-person offline activity entirely. Respond to the user without adding your own work, location, drink or physical actions.']:[]),
+    ...(reason.includes('invented offline activity')?['Remove the invented first-person offline activity entirely. Respond to the user without adding your own work, location, drink, hunger, thirst, sleepiness, desire to eat/drink, or physical actions.']:[]),
     ...(reason.startsWith('dialogue:')?['Respect the current style request. Reply briefly and naturally; omit unwanted questions and abandoned-topic hooks. Do not turn the repair into an apology or a list of promises.']:[]),
     ...(reason.includes('contradicted latest user fact')?['Use the latest literal user statement for this object. Do not repeat the superseded assertion or invent a substitute preference. Today-only restrictions remain temporary.']:[]),
     ...(reason.includes('unsupported plan outcome')?['Only a plan is recorded. Do not assert that it happened or that it definitely has not happened. State only that the user mentioned a plan and has not told you about completion.']:[]),

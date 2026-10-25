@@ -29,3 +29,9 @@ describe('007B validation consumes durable evidence after C6 rolls off',()=>{
   expect(validateResponse({proposal:proposal('你提过这个计划，后来有没有去还没告诉我。'),decision,userInput:'我们去过函馆吗？',recentConversation:[],memoryEvidence:selectedMemoryEvidence(context('共同记录（计划不代表已发生）：用户陈述：我们计划去函馆'))})).toMatchObject({passed:true});
  });
 });
+
+describe('007A observed bodily need invention',()=>{
+ it.each(['拉面啊，什么口味的？我今天正好有点想吃点热的。','我也想喝杯奶茶。','我现在困了。'])('rejects an invented first-person physical need before any display shortening: %s',reply=>expect(dialogueStyleFailure(reply,'我今天吃了拉面，很好吃')).toBe('dialogue: invented offline activity'));
+ it.each(['“我今天正好有点想吃点热的”是例句。','如果我今天想吃点热的，这只是个假设。','我没有说我今天想吃拉面。','我也想你。','你今天吃点热的也不错。'])('preserves quotation, hypothesis, negation and non-bodily speech: %s',reply=>expect(dialogueStyleFailure(reply,'聊聊今天')).toBeNull());
+ it('preserves explicit writing tasks',()=>expect(dialogueStyleFailure('我今天正好想吃点热的。','写一段故事对白。')).toBeNull());
+});

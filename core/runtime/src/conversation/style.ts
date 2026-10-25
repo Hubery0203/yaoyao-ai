@@ -53,7 +53,7 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
     '接话尺度示意（不照抄）：对方说今天很喜欢你，可以直接回一句喜欢；对方说河边的风舒服，可以聊那阵风，不补写自己此刻的生活。没有具体内容可加时，短一句就够。',
     '记忆帮助理解当前内容，不需要展示核对过程。普通分享中不解释资料来源、计划与事实的区别或记忆保存；被问到事实才回答必要的边界。',
     '用户的新分享本身就是话题，之前没答的问题可以自然放下；用户主动接回才继续。普通聊天直接写消息，不写标题、总结、服务承诺或改进清单。',
-    ...(style.casualShare?['这是日常小分享：抓住具体的一点自然接话。无需重复整件事、提炼人生道理、解释情绪或送上建议；不为延长聊天硬添问题。']:[]),
+    ...(style.casualShare?['这是日常小分享：抓住具体的一点自然接话，通常一句具体回应就够。无需重复整件事、提炼人生道理、解释情绪或送上建议；不附加“先歇一会儿吧”等生活安排，也不补问花色、口味来续聊。用户明确求助时再展开。']:[]),
     ...(style.farewell?['对方要离开或忙别的：简短道别，不追问、不挽留、不安排对方回来汇报。']:[]),
     ...(style.briefAffection?['这是亲昵接话：默认一句简短、直接的亲昵回应，称呼可以自然保留。不复述对方心情，不讲“这句话让我/我听了觉得/我接得很开心”，不反问考验、不要求补说爱意，不扩写成场景对白。']:[]),
     ...(style.affectionateClosing?['对方准备睡觉：轻轻道晚安就收住，不再追问、不挽留、不声称关灯盖被或同床的实际动作。']:[]),
@@ -78,8 +78,11 @@ export function dialogueStyleFailure(response:string,input:string):string|null {
     !/(?:如果|假如|要是|比如|不会|没有|不是|不能|并未|没在|没去)/u.test(clause)&&
     /我(?:这边)?(?:刚刚|刚|正在|现在在)(?:把手里的事收尾|忙完工作|下班|喝(?:了|着)|吃(?:了|着)|走到|在厨房|在公司|收拾房间)/u.test(clause));
   const writingTask=/^(?:请|帮我)?(?:翻译|改写|写(?:个|一段|一篇|一个)?(?:故事|小说|对白))/u.test(input.trim());
+  const bodilyNeed=text.split(/[，,。！？!?；;\n]/u).some(clause=>
+    !/(?:如果|假如|要是|比如|没说|没有说|没表示|不会说|不能说|不声称|不代表)/u.test(clause)&&
+    /我(?:今天|现在|这会儿)?(?:正好|刚好)?(?:也)?(?:有点|有些)?(?:想吃|想喝|饿了|渴了|困了|肚子饿|口渴)/u.test(clause));
   const staging=/(?:灯我来关|我(?:来|帮你|给你)(?:关灯|盖(?:好)?被子|掖(?:好)?被角)|我(?:已经|刚)?(?:躺在你(?:身边|旁边)|钻进被窝))/u.test(text);
-  if(!writingTask&&(offline||staging))return 'dialogue: invented offline activity';
+  if(!writingTask&&(offline||staging||bodilyNeed))return 'dialogue: invented offline activity';
 
   if(!style.resumeTopic&&(style.topicShift||style.disclosure)&&/(?:不过|另外|但是|话说回来)[^。！？!?\n]{0,45}(?:刚才|之前|上次|还没[^。！？!?\n]{0,12}完|还悬着)|(?:先把|先回答)[^。！？!?\n]{0,30}(?:刚才|之前|旧问题)|回到(?:刚才|之前)(?:的)?(?:话题|问题)/u.test(text))return 'dialogue: abandoned topic hook';
   if((style.quiet||style.noQuestions||style.disclosure||style.acknowledgment||style.styleFeedback||style.affectionateClosing||style.farewell)&&/[？?]|(?:要不要|愿不愿意|能不能)(?:再|和我|告诉|说|聊)|(?:对吧|是吧|好吗|行吗)[。！!\s]*$/u.test(text))return 'dialogue: unwanted question';
