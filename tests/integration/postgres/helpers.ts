@@ -93,13 +93,14 @@ export async function setupDatabase(): Promise<TestDatabase> {
   const run = await applyMigrations(adminPool, MIGRATIONS_DIR, "test-harness");
   const applied = run.applied;
   if (
-    applied.length !== 6 ||
+    applied.length !== 7 ||
     applied[0] !== "0001_initial_schema" ||
     applied[1] !== "0002_auth_lookup" ||
     applied[2] !== "0003_conversation_event_types" ||
     applied[3] !== "0004_continuity_jobs" ||
     applied[4] !== "0005_continuity_engines" ||
-    applied[5] !== "0006_weixin_channel"
+    applied[5] !== "0006_weixin_channel" ||
+    applied[6] !== "0007_weixin_experience"
   ) {
     throw new Error(`unexpected migration run: ${JSON.stringify(run)}`);
   }

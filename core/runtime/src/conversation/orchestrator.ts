@@ -54,7 +54,7 @@ import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 import {renderConversationContinuity} from "./continuity.js";
 import {conversationStyle} from './style.js';
-import {projectTurnMemories,focusDisclosureHistory} from './memory-context.js';
+import {projectTurnMemories,focusDisclosureHistory,selectedMemoryEvidence} from './memory-context.js';
 import {validationFailureSummary} from "./quality.js";
 import { classifySituation } from "./situation.js";
 
@@ -347,6 +347,7 @@ export class ConversationOrchestrator {
       decision,
       userInput: input.text,
       recentConversation: recentConversationTexts.slice(-6),
+      memoryEvidence:selectedMemoryEvidence(memoryContext),
       timing:{now:turnTime,turns:conversationHistory},
     });
     const failures=validationOutcome.passed?[]:[validationFailureSummary(validationOutcome)];
@@ -380,6 +381,7 @@ export class ConversationOrchestrator {
         decision,
         userInput: input.text,
         recentConversation: recentConversationTexts.slice(-6),
+        memoryEvidence:selectedMemoryEvidence(memoryContext),
         timing:{now:turnTime,turns:conversationHistory},
       });
       if(!validationOutcome.passed)failures.push(validationFailureSummary(validationOutcome));
@@ -394,7 +396,7 @@ export class ConversationOrchestrator {
       finalResponse = buildFallbackResponse({
         userInput: input.text,
         decision,
-        recentConversation:recentConversationTexts,
+        recentConversation:[...selectedMemoryEvidence(memoryContext),...recentConversationTexts],
       });
     }
     (trace as { validation?: unknown }).validation = {

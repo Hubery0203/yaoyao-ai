@@ -5,7 +5,7 @@ import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {type WeixinChannelPort} from '@yaoyao/application';
+import {TRANSACTION_MANAGER,recordAcceptedOutreach,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
 import {loadConfig,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,type WeixinRow} from '@yaoyao/infrastructure';
@@ -22,15 +22,15 @@ export async function readWeixinCredentials(path:string):Promise<WeixinCredentia
   return {base:c.base,token:c.token,botId:c.botId,ownerId:c.ownerId};
  }finally{await file.close();}
 }
-export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,'update'>,client:Pick<WeixinClient,'send'>,converse:(userId:string,text:string,key:string)=>Promise<string>):Promise<void>{
+export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,'update'>&Partial<Pick<WeixinStore,'beginSend'>>,client:Pick<WeixinClient,'send'>,converse:(userId:string,text:string,key:string)=>Promise<string>):Promise<void>{
  if(['uncertain','failed'].includes(row.stage)||new Date(row.retry_at).getTime()>Date.now())return;
  let reply=row.reply;
  if(!reply){
   await store.update(row.message_key,'generating',{attempt:true});
-  try{reply=await converse(row.user_id,row.text,'weixin-'+row.message_key);await store.update(row.message_key,'ready',{reply});}
+  try{reply=await converse(row.user_id,row.turn_text??row.text,'weixin-'+row.message_key);await store.update(row.message_key,'ready',{reply});}
   catch{await store.update(row.message_key,row.attempts>=2?'failed':'pending',{error:'GENERATION_FAILED',delay:Math.min(60000,5000*2**row.attempts)});return;}
  }
- await store.update(row.message_key,'sending',{attempt:true});
+ if(store.beginSend){if(!await store.beginSend(row.message_key))return;}else await store.update(row.message_key,'sending',{attempt:true});
  try{
   const text=reply.length>4000?reply.slice(0,3975)+'…（完整回复见网页）':reply;
   const ack=await client.send(row.message_key,row.context_token,text);
@@ -45,9 +45,10 @@ export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,
  }
 }
 @Injectable()
-export class WeixinBridgeService implements OnModuleInit,WeixinChannelPort {
- private readonly config=loadConfig();private store?:WeixinStore;private client?:WeixinClient;private running?:Promise<void>;private stopped=false;
+export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
+ private readonly config=loadConfig();private store?:WeixinStore;private client?:WeixinClient;private running?:Promise<void>;private stopped=false;private lastPoll=0;private lastSchedule=0;private lastHistory=0;
  constructor(@Inject('YAOYAO_PG_POOL') private readonly pool:Pool,@Inject(CONVERSATION_ORCHESTRATOR) private readonly core:ConversationOrchestrator,@Inject(LiteRuntimeService) private readonly gate:LiteRuntimeService,
+  @Inject(TRANSACTION_MANAGER)private readonly tx:TransactionManager,
   @Optional() @Inject('CONVERSATION_QUALITY') private readonly quality?:{record(entry:ReturnType<typeof summarizeTurnQuality>):void},
   @Optional() @Inject('CONVERSATION_PERFORMANCE') private readonly performance?:{record(entry:ReturnType<typeof summarizeTurnPerformance>,source:'web'|'weixin'):void}){}
  async onModuleInit():Promise<void>{
@@ -62,38 +63,62 @@ export class WeixinBridgeService implements OnModuleInit,WeixinChannelPort {
  private async loop():Promise<void>{
   const store=this.store!,client=this.client!;
   try{await client.post('msg/notifystart',{},10000);}catch(e){if(e instanceof WeixinError&&e.code==='AUTH_EXPIRED'){await store.error('AUTH_EXPIRED',true);return;}}
+  // Polling must continue while a reply is being generated. Only one delivery consumer exists.
+  try{await Promise.all([this.pollLoop(store,client),this.deliveryLoop(store,client)]);}finally{this.stopped=true;client.close();}
+ }
+ private async pollLoop(store:WeixinStore,client:WeixinClient):Promise<void>{
   while(!this.stopped&&store.healthy){
    try{
     const c=await store.channel();
     if(c.user_id)this.gate.registerOwner(c.user_id);
     if(c.paused||c.auth_expired){await sleep(1000);continue;}
-    const row=await store.next();
-    if(row&&!['uncertain','failed'].includes(row.stage)&&new Date(row.retry_at).getTime()<=Date.now()){
-     if(!this.gate.acquire()){await sleep(1000);continue;}
-     try{await processWeixinMessage(row,store,client,async(userId,text,key)=>{
-      this.gate.registerOwner(userId);
-      const result=await this.core.converse({userId:userId as UserId,text,requestId:key,traceId:randomUUID()});
-      try{this.quality?.record(summarizeTurnQuality(result.trace));}catch{/* Telemetry cannot fail Core replay. */}
-      try{this.performance?.record(summarizeTurnPerformance(result.trace),'weixin');}catch{/* Numeric telemetry only. */}
-      return result.response;
-     });}finally{this.gate.release();}
-     continue;
-    }
     const data=await client.post('getupdates',{get_updates_buf:c.cursor});
     if(!Array.isArray(data.msgs)||data.msgs.length>100||typeof data.get_updates_buf!=='string'||data.get_updates_buf.length>65536)throw new WeixinError('INVALID_BATCH');
-    const messages=data.msgs.map(m=>extractText(m,client.credentials)).filter(m=>m!==null);
-    await store.ingest(messages,data.get_updates_buf);
-    await sleep(300);
-   }catch(e){
-    if(this.stopped)break;
-    const auth=e instanceof WeixinError&&e.code==='AUTH_EXPIRED';
-    await store.error(auth?'AUTH_EXPIRED':e instanceof Error&&e.message==='BACKLOG_FULL'?'BACKLOG_FULL':'CHANNEL_RETRY',auth);
-    await sleep(3000);
-   }
+    await store.ingest(data.msgs.map(m=>extractText(m,client.credentials)).filter(m=>m!==null),data.get_updates_buf);
+    this.lastPoll=Date.now();await sleep(300);
+   }catch(e){if(this.stopped)break;await this.channelError(store,e);await sleep(3000);}
   }
  }
+ private async channelError(store:WeixinStore,error:unknown):Promise<void>{
+  const auth=error instanceof WeixinError&&error.code==='AUTH_EXPIRED';
+  await store.error(auth?'AUTH_EXPIRED':error instanceof Error&&error.message==='BACKLOG_FULL'?'BACKLOG_FULL':'CHANNEL_RETRY',auth);
+ }
+ private async deliveryLoop(store:WeixinStore,client:WeixinClient):Promise<void>{
+  while(!this.stopped&&store.healthy){
+   try{
+    const c=await store.channel();
+    if(c.paused||c.auth_expired){await sleep(1000);continue;}
+    if(Date.now()-this.lastPoll<60000&&Date.now()-this.lastSchedule>=30000){
+     this.lastSchedule=Date.now();await store.scheduleOutreach();
+    }
+    let history:WeixinRow|undefined;
+    if(Date.now()-this.lastHistory>=5000){history=await store.nextOutreachHistory();this.lastHistory=history?0:Date.now();}
+    if(history){
+     await this.tx.runAsUser(history.user_id as UserId,tx=>recordAcceptedOutreach(tx,{userId:history.user_id as UserId,key:history.message_key,text:history.reply!}));
+     await store.outreachHistoryRecorded(history.message_key);
+    }
+    const row=await store.claimBatch();
+    if(!row||['uncertain','failed'].includes(row.stage)||new Date(row.retry_at).getTime()>Date.now()){await sleep(500);continue;}
+    if(!this.gate.acquire()){await sleep(500);continue;}
+    try{await processWeixinMessage(row,store,client,async(userId,text,key)=>{
+     this.gate.registerOwner(userId);
+     const result=await this.core.converse({userId:userId as UserId,text,requestId:key,traceId:randomUUID()});
+     try{this.quality?.record(summarizeTurnQuality(result.trace));}catch{/* Telemetry cannot fail Core replay. */}
+     try{this.performance?.record(summarizeTurnPerformance(result.trace),'weixin');}catch{/* Numeric telemetry only. */}
+     return result.response;
+    });
+    // Make accepted outreach visible before an immediate answer enters Core history.
+    if(row.origin==='proactive')this.lastHistory=0;
+    }finally{this.gate.release();}
+   }catch(e){if(this.stopped)break;await this.channelError(store,e);await sleep(3000);}
+  }
+ }
+
  async status(userId:string):Promise<unknown>{return this.store?.healthy?this.store.status(userId):{enabled:false};}
  private available(){if(!this.store?.healthy)throw Error('CHANNEL_DISABLED');return this.store;}
+ settings(userId:string,settings:OutreachSettings){return this.available().settings(userId,settings);}
+ followup(userId:string,message:string,dueAt:string){return this.available().followup(userId,message,dueAt);}
+ cancelFollowup(userId:string,id:string){return this.available().cancelFollowup(userId,id);}
  bindingCode(userId:string){return this.available().bindingCode(userId);}
  control(userId:string,action:'pause'|'resume'){return this.available().control(userId,action);}
  resolve(userId:string,key:string,action:'confirm'|'retry'|'skip'){return this.available().resolve(userId,key,action);}
