@@ -1,5 +1,5 @@
 import {sql} from 'drizzle-orm';
-import {DEFAULT_PREFERENCES,StaleWriteError,type CompanionExperienceStore,type CompanionPreferences,type LifeEvent,type MemoryAction,type PreferenceRecord} from '@yaoyao/application';
+import {DEFAULT_PREFERENCES,StaleWriteError,type CompanionExperienceStore,type CompanionPreferences,type LifeEvent,type MemoryAction,type PreferenceRecord,type CompanionAction} from '@yaoyao/application';
 import type {UserId} from '@yaoyao/domain';
 import type {Db} from '../db.js';
 export class PostgresCompanionExperience implements CompanionExperienceStore {
@@ -26,4 +26,8 @@ export class PostgresCompanionExperience implements CompanionExperienceStore {
  async pendingAction(id:UserId,code:string):Promise<MemoryAction|null>{const r=await this.db.execute(sql`SELECT * FROM memory_actions WHERE user_id=${id}::uuid AND code=${code} FOR UPDATE`);const v=r.rows[0];return v?{code:String(v.code),kind:v.kind as MemoryAction['kind'],memoryId:v.memory_id===null?null:String(v.memory_id),expectedVersion:v.expected_version===null?null:Number(v.expected_version),statement:v.statement===null?null:String(v.statement),expiresAt:new Date(v.expires_at as string),status:v.status as MemoryAction['status']}:null;}
  async saveAction(id:UserId,a:MemoryAction):Promise<void>{await this.db.execute(sql`UPDATE memory_actions SET status='cancelled' WHERE user_id=${id}::uuid AND status='pending'`);await this.db.execute(sql`INSERT INTO memory_actions(user_id,code,kind,memory_id,expected_version,statement,expires_at,status) VALUES(${id}::uuid,${a.code},${a.kind},${a.memoryId}::uuid,${a.expectedVersion},${a.statement},${a.expiresAt},${a.status})`);}
  async resolveAction(id:UserId,code:string,status:'done'|'cancelled'):Promise<void>{await this.db.execute(sql`UPDATE memory_actions SET status=${status} WHERE user_id=${id}::uuid AND code=${code} AND status='pending'`);}
+
+ async pendingCompanionAction(id:UserId,code:string):Promise<CompanionAction|null>{const r=await this.db.execute(sql`SELECT code,kind,payload,expires_at,status FROM companion_actions WHERE user_id=${id}::uuid AND code=${code} FOR UPDATE`);const v=r.rows[0];return v?{code:String(v.code),kind:v.kind,payload:v.payload,expiresAt:new Date(v.expires_at as string),status:v.status} as CompanionAction:null;}
+ async saveCompanionAction(id:UserId,a:CompanionAction):Promise<void>{await this.db.execute(sql`UPDATE companion_actions SET status='cancelled' WHERE user_id=${id}::uuid AND status='pending'`);await this.db.execute(sql`INSERT INTO companion_actions(user_id,code,kind,payload,expires_at,status) VALUES(${id}::uuid,${a.code},${a.kind},${JSON.stringify(a.payload)}::jsonb,${a.expiresAt},${a.status})`);}
+ async resolveCompanionAction(id:UserId,code:string,status:'done'|'cancelled'):Promise<void>{await this.db.execute(sql`UPDATE companion_actions SET status=${status} WHERE user_id=${id}::uuid AND code=${code} AND status='pending'`);}
 }

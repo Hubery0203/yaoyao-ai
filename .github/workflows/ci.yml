@@ -37,8 +37,15 @@ jobs:
       - run: npm run test:contract
       - run: npm run test:web
       - run: node --test tools/weixin-w1/probe.test.mjs
+      - run: node --test tools/backup/backup.test.mjs
       - run: node scripts/evaluate-quality.mjs --mode mock --out quality-report.json
       - run: node scripts/evaluate-experience.mjs --mode mock --out experience-report.json
+      - run: node scripts/evaluate-experience.mjs --mode mock --fixtures tests/fixtures/experience-009.json --max-calls 30 --out experience-009-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experience-009-quality-report
+          path: experience-009-report.json
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: experience-quality-report
@@ -116,7 +123,7 @@ jobs:
       - run: sha256sum yaoyao-linux-x64.tar.gz > yaoyao-linux-x64.sha256
       # A small, independently checksummed code bundle permits verified overlays
       # when package-lock and the deployed Linux dependency/runtime base are unchanged.
-      - run: tar -czf yaoyao-linux-code.tar.gz -C release package.json package-lock.json core apps db deploy RELEASE.json
+      - run: tar -czf yaoyao-linux-code.tar.gz -C release package.json package-lock.json core apps db deploy tools RELEASE.json
       - run: sha256sum yaoyao-linux-code.tar.gz > yaoyao-linux-code.sha256
       - uses: actions/upload-artifact@v4
         with:

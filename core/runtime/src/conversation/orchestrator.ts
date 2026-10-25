@@ -1,3 +1,4 @@
+import {renderTurnVariety} from './naturalness.js';
 /**
  * ConversationOrchestrator — Canonical Runtime 10-step pipeline (MVP-002B).
  *
@@ -247,9 +248,10 @@ export class ConversationOrchestrator {
       traceId: input.traceId,
     });
     const memoryContext=projectTurnMemories(retrievedMemoryContext,input.text,recentConversationTexts);
+    const varietyGuidance=renderTurnVariety(input.text,recentConversationTexts.slice(-6),'',situation.intent);
     const assembled = this.assembler.assemble({
       data: personaData,
-      additionalOverheadTokens:experienceGuidance?estimateTokens(experienceGuidance):0,
+      additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0),
       inputText: input.text,
       memoryContext,
       conversationHistory:focusDisclosureHistory(input.text,conversationHistory),
@@ -317,6 +319,7 @@ export class ConversationOrchestrator {
         renderDecisionGuidance(decision),
         renderConversationContinuity(input.text,recentConversationTexts.slice(-6),{now:turnTime,turns:conversationHistory}),
         experienceGuidance,
+        varietyGuidance,
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInputInContext:true,

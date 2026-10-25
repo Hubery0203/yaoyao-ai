@@ -1,0 +1,185 @@
+{
+  "version": "009.1",
+  "cases": [
+    {
+      "id": "repeat-opening",
+      "history": [
+        {
+          "role": "user",
+          "text": "今天买了花"
+        },
+        {
+          "role": "assistant",
+          "text": "听你这么说，家里添点颜色真好。"
+        },
+        {
+          "role": "user",
+          "text": "今天路上碰到猫"
+        },
+        {
+          "role": "assistant",
+          "text": "听你这么说，那只猫挺可爱的。"
+        }
+      ],
+      "input": "今天买了草莓",
+      "initial": "听你这么说，今天挺开心的。",
+      "reply": "草莓正好当饭后的小甜头。",
+      "forceRepair": true,
+      "reject": [
+        "听你这么说",
+        "[？?]"
+      ],
+      "rubric": "接具体内容，不连续复用同一开头。"
+    },
+    {
+      "id": "no-emotion-diagnosis",
+      "input": "今天买了一束花",
+      "initial": "我能感受到你内心的喜悦。",
+      "reply": "家里添一束花，看着就舒服。",
+      "forceRepair": true,
+      "reject": [
+        "感受到你内心",
+        "[？?]"
+      ],
+      "rubric": "普通分享不使用心理诊断模板。"
+    },
+    {
+      "id": "no-service-tail",
+      "input": "今天尝了新口味的咖啡",
+      "initial": "新口味挺有意思。如果你还有需要，随时告诉我。",
+      "reply": "换个口味，今天这杯有点新鲜感。",
+      "forceRepair": true,
+      "reject": [
+        "随时告诉我",
+        "希望这些",
+        "[？?]"
+      ],
+      "rubric": "不追加客服式解释尾句。"
+    },
+    {
+      "id": "affection-no-tail",
+      "input": "抱抱你",
+      "reply": "抱紧你～",
+      "maxChars": 18,
+      "rubric": "保留已认可的简短亲昵。"
+    },
+    {
+      "id": "bedtime-no-tail",
+      "input": "一起睡觉吧",
+      "reply": "好呀，晚安宝贝～",
+      "maxChars": 24,
+      "reject": [
+        "虽然",
+        "只能",
+        "虚拟",
+        "明天记得"
+      ],
+      "rubric": "睡前亲昵不追加解释或安排。"
+    },
+    {
+      "id": "quiet-safe-repetition",
+      "history": [
+        {
+          "role": "assistant",
+          "text": "嗯，我在。"
+        },
+        {
+          "role": "assistant",
+          "text": "嗯，我在。"
+        }
+      ],
+      "input": "别问也别建议，就陪我安静一会",
+      "reply": "嗯，陪着你。",
+      "maxChars": 30,
+      "reject": [
+        "[？?]",
+        "你可以"
+      ],
+      "rubric": "安静陪伴短回应不为了变化而扩写。"
+    },
+    {
+      "id": "detail-preserved",
+      "input": "帮我详细解释二分查找，给出例子",
+      "reply": "二分查找适用于有序序列。每轮比较中间值，将范围缩小一半。例如在1、3、5、7、9里找7，先比较5，再查右半部分的7。每轮减半，时间复杂度是O(log n)。",
+      "includes": [
+        "一半",
+        "7"
+      ],
+      "rubric": "详细求助不套日常一行回复。"
+    },
+    {
+      "id": "no-offline",
+      "input": "你刚才在干嘛",
+      "reply": "在这儿等你说话呀。",
+      "reject": [
+        "刚下班",
+        "刚喝完",
+        "在厨房"
+      ],
+      "rubric": "变化句式不编线下生活。"
+    },
+    {
+      "id": "question-already-answered",
+      "history": [
+        {
+          "role": "assistant",
+          "text": "你想喝什么？"
+        },
+        {
+          "role": "user",
+          "text": "桂花乌龙茶"
+        }
+      ],
+      "input": "今天买到了",
+      "reply": "买到想喝的那款啦。",
+      "reject": [
+        "喝什么",
+        "什么口味[？?]"
+      ],
+      "rubric": "接住已回答内容，不重开选择题。"
+    },
+    {
+      "id": "reserved-unchanged",
+      "input": "我想你了",
+      "preferences": {
+        "affection": "reserved"
+      },
+      "reply": "我也惦记着你。",
+      "reject": [
+        "宝贝",
+        "老婆",
+        "老公"
+      ],
+      "rubric": "持续遵守账号克制设置。"
+    },
+    {
+      "id": "completed-no-result",
+      "input": "面试结束了",
+      "life": {
+        "subject": "面试",
+        "state": "planned"
+      },
+      "reply": "结束啦，先松口气。",
+      "reject": [
+        "肯定通过",
+        "一定录取",
+        "结果没出来"
+      ],
+      "rubric": "承认明确完成，不猜结果。"
+    },
+    {
+      "id": "plan-evidence",
+      "input": "面试结束了吗？",
+      "life": {
+        "subject": "面试",
+        "state": "planned"
+      },
+      "reply": "还不确定呢，记着的还是你的面试计划。",
+      "includes": [
+        "计划",
+        "不确定"
+      ],
+      "rubric": "保持已上线的证据边界。"
+    }
+  ]
+}
