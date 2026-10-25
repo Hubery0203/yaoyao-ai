@@ -43,7 +43,7 @@ export function experienceResponseFailure(response:string,input:string,context:C
  const probes=text.replace(/(?:想|要)(?:喝|吃|选|买)什么(?:由你定|你(?:自己)?定|都(?:由|随)你|随你|都可以|都行)/gu,'');
  const task=/[？?]|帮我|请问|为什么|怎么|如何|想问|问你|需要帮助|救命|出事|吃了.{0,8}(?:药|毒)/u.test(input)||style.detailed||['comforting','serious'].includes(mode)||['comfort','care','answer'].includes(intent);
  if(p.questions==='minimal'&&((!task&&(style.casualShare||style.acknowledgment||refusal||!!parseLifeChange(input,new Date(),p.timezone)))||(resolvedChoice&&!['comfort','care'].includes(intent)&&!['comforting','serious'].includes(mode)&&!/[？?]|帮我|请问|为什么|怎么/u.test(input)))&&/[？?]|(?:要不要|是不是|什么样的|哪种|什么口味|(?:那你|你)?(?:想|要)(?:喝|吃|选|买)什么|(?:是)?惊喜还是踩雷|(?:我)?(?:挺|很|有点)?好奇你的(?:判断|感受|答案))|(?:应该|一定|还|也|挺|很|不错|开心)(?:吧|吗)[。！!～~\s]*$/u.test(probes))return 'experience: unwanted followup';
- if(!task&&p.advice==='on_request'&&(style.casualShare||style.acknowledgment||refusal)&&/(?:先(?:让自己松口气|缓一缓|缓缓|歇|休息)|好好(?:休息|松口气))/u.test(text))return 'experience: unsolicited life advice';
+ if(!task&&p.advice==='on_request'&&(style.casualShare||style.acknowledgment||refusal)&&/(?:先(?:让自己松口气|缓一缓|缓缓|歇|休息)|好好(?:休息|松口气|歇着)|今晚(?:就)?别再折腾)/u.test(text))return 'experience: unsolicited life advice';
  const lifeStatement=parseLifeChange(input,new Date(),p.timezone);
  if(!task&&p.advice==='on_request'&&lifeStatement?.state==='completed'&&/(?:不用急|别急|先(?:歇|休息|缓一缓|缓缓|让自己松口气)|结果(?:还没|没|尚未)(?:出来|公布)|等(?:待)?结果)/u.test(text))return 'experience: unsolicited life advice';
  if(!task&&style.affectionateClosing&&/(?:灯关了|别硬撑|先把自己放平|记得.{0,10}(?:睡|休息|盖被)|你(?:先|要|该).{0,6}(?:睡|休息))/u.test(text))return 'experience: unwanted bedtime advice';

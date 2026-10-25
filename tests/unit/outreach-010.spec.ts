@@ -34,3 +34,11 @@ describe('010 review false-positive and guidance consistency',()=>{
  it('blocks rest-advice preambles before a technical answer, preserves requested rest advice',()=>{expect(naturalnessFailure('下班了就先松口气。二分查找要求有序。','我今天下班了\n帮我详细解释二分查找',[],'','answer')).toContain('advice');expect(naturalnessFailure('先休息，再观察。','帮我详细解释怎么休息',[],'','answer')).toBeNull();});
  it('does not attach a rest assignment to a completed share',()=>expect(experienceResponseFailure('先让自己松口气。','面试结束了',context,'','')).toContain('advice'));
 });
+
+describe('010 final bounded fatigue correction',()=>{
+ const context={preferences:{...DEFAULT_PREFERENCES},lifeEvents:[]};
+ it('rejects observed unsolicited rest assignments after a short burst, preserves requested care',()=>{
+  expect(experienceResponseFailure('今晚就别再折腾别的了，好好歇着。','我今天终于下班了\n累死了',context,'','')).toContain('advice');
+  expect(experienceResponseFailure('好好歇着。','我今天病了，怎么休息比较好？',context,'serious','care')).toBeNull();
+ });
+});
