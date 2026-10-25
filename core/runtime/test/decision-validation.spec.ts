@@ -428,3 +428,9 @@ describe("F21 — Provider switching", () => {
     expect(guidance).not.toMatch(/openai/i);
   });
 });
+
+describe('010 pacing guidance aligns with casual and resolved turns',()=>{
+ it.each(['我今天终于下班了\n累死了','别再推荐奶茶了','茶吧'])('does not advertise optional followup after %s',text=>{
+  const {decision}=new DecisionEngine().decide(decisionInput({currentInput:text,recentConversation:['YaoYao: 咖啡还是茶？']}));expect(decision.followUp).toBe('none');expect(renderDecisionGuidance(decision)).toContain('Follow-up: none');
+ });
+});

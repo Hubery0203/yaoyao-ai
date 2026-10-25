@@ -28,7 +28,7 @@ for(const f of dataset.cases.slice(0,maxTurns)){
  const input={userId:'synthetic',requestId:f.id,traceId:f.id,text:f.input};
  try{
   const result=await core.converse(input),after=calls,replay=await core.converse(input),quality=summarizeTurnQuality(result.trace),performance=summarizeTurnPerformance(result.trace);
-  const checks={replay:replay.response===result.response&&calls===after,noForbidden:(f.reject??[]).every(r=>!new RegExp(r,'iu').test(result.response)),requiredHints:(f.includes??[]).every(s=>result.response.includes(s)),length:!f.maxChars||result.response.length<=f.maxChars,repairObserved:mode!=='mock'||!f.forceRepair||quality.repairAttempts===1,noFallback:!quality.validationFallback&&!quality.providerFallback};
+  const checks={replay:replay.response===result.response&&calls===after,noForbidden:(f.reject??[]).every(r=>!new RegExp(r,'iu').test(result.response)),requiredHints:(f.includes??[]).every(s=>result.response.includes(s))&&(f.anyOf??[]).every(group=>group.some(s=>result.response.includes(s))),length:!f.maxChars||result.response.length<=f.maxChars,repairObserved:mode!=='mock'||!f.forceRepair||quality.repairAttempts===1,noFallback:!quality.validationFallback&&!quality.providerFallback};
   report.turns.push({id:f.id,input:f.input,preferences:f.preferences??{},response:result.response,rubric:f.rubric,checks,quality,performance,modelCalls:calls-before,rawAttempts});
  }catch(e){report.turns.push({id:f.id,input:f.input,error:e.code??e.name,modelCalls:calls-before,rawAttempts});}
 }

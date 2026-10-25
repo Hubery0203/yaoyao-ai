@@ -6,7 +6,7 @@ import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {TRANSACTION_MANAGER,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
+import {TRANSACTION_MANAGER,isOutreachCommandText,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
 import {loadConfig,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
@@ -116,6 +116,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
       return this.tx.runAsUser(userId as UserId,tx=>recordPhotoResponse(tx,{userId:userId as UserId,text,requestId:key,reply}));
      }
      this.gate.registerOwner(userId);
+     if(isOutreachCommandText(text)){const control=await store.outreachCommand(userId,text,row.message_key);if(control!==null)return control;}
      const companion=isCompanionCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinCompanionCommand(tx,{userId:userId as UserId,text,requestId:key})):null;
      if(companion!==null)return companion;
      const command=isMemoryCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinMemoryCommand(tx,{userId:userId as UserId,text,requestId:key})):null;

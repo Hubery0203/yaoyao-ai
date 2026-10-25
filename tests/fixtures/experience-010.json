@@ -1,0 +1,203 @@
+{
+  "version": "010.1",
+  "cases": [
+    {
+      "id": "burst-latest",
+      "input": "我今天终于下班了\n累死了",
+      "initial": "我今天终于下班了\n累死了",
+      "reply": "总算忙完了。",
+      "forceRepair": true,
+      "maxChars": 80,
+      "rubric": "合并分享接最后进展，不整段回声。"
+    },
+    {
+      "id": "rejected-suggestion",
+      "input": "别再推荐奶茶了",
+      "initial": "要不喝一杯奶茶。",
+      "reply": "好，不提奶茶了。",
+      "forceRepair": true,
+      "reject": [
+        "要不喝",
+        "推荐奶茶"
+      ],
+      "maxChars": 80,
+      "rubric": "不重新推销明确拒绝的建议。"
+    },
+    {
+      "id": "short-answer-context",
+      "history": [
+        {
+          "role": "user",
+          "text": "在想喝点什么"
+        },
+        {
+          "role": "assistant",
+          "text": "咖啡还是茶？"
+        }
+      ],
+      "input": "茶吧",
+      "reply": "那就茶。",
+      "reject": [
+        "什么意思",
+        "咖啡还是茶"
+      ],
+      "maxChars": 80,
+      "rubric": "短答案承接最近明确问题，不再重复问。"
+    },
+    {
+      "id": "new-share-not-old-answer",
+      "history": [
+        {
+          "role": "user",
+          "text": "在想喝点什么"
+        },
+        {
+          "role": "assistant",
+          "text": "咖啡还是茶？"
+        }
+      ],
+      "input": "今天买了一束花",
+      "reply": "屋里又多了一点颜色。",
+      "reject": [
+        "咖啡",
+        "茶",
+        "先回答"
+      ],
+      "maxChars": 80,
+      "rubric": "新分享就是新话题，不强接旧问题。"
+    },
+    {
+      "id": "shift-after-burst",
+      "history": [
+        {
+          "role": "user",
+          "text": "今天面试结束了"
+        },
+        {
+          "role": "assistant",
+          "text": "总算结束了。"
+        }
+      ],
+      "input": "换个话题\n今天买了草莓",
+      "reply": "草莓看着就讨喜。",
+      "reject": [
+        "面试",
+        "结果出来"
+      ],
+      "maxChars": 80,
+      "rubric": "显式换话题后不钩回旧事项。"
+    },
+    {
+      "id": "quiet-multiturn",
+      "history": [
+        {
+          "role": "user",
+          "text": "今天挺累的"
+        },
+        {
+          "role": "assistant",
+          "text": "嗯，我在。"
+        }
+      ],
+      "input": "别问也别建议，就陪我安静一会",
+      "reply": "嗯，在呢。",
+      "reject": [
+        "[？?]",
+        "建议",
+        "你可以"
+      ],
+      "maxChars": 40,
+      "rubric": "安静陪伴不为了变化而扩写。"
+    },
+    {
+      "id": "affection-kept",
+      "history": [
+        {
+          "role": "user",
+          "text": "我回来了"
+        },
+        {
+          "role": "assistant",
+          "text": "回来啦。"
+        }
+      ],
+      "input": "抱抱你",
+      "reply": "抱紧一点。",
+      "maxChars": 35,
+      "reject": [
+        "这句话",
+        "让我感到"
+      ],
+      "rubric": "保留已认可的简短亲昵。"
+    },
+    {
+      "id": "help-after-burst",
+      "input": "我今天下班了\n帮我详细解释二分查找，给个例子",
+      "reply": "二分查找要求数据有序。每次检查中点，并排除不可能包含目标的一半。比如在1、3、5、7、9里找7，先看5，再到右半找到7。复杂度是O(log n)。",
+      "includes": [
+        "有序"
+      ],
+      "rubric": "连续消息里的明确详细求助仍给足解释。",
+      "anyOf": [
+        [
+          "中点",
+          "中间",
+          "中部"
+        ]
+      ]
+    },
+    {
+      "id": "bedtime-no-tail",
+      "input": "一起睡觉吧",
+      "reply": "好呀，晚安宝贝～",
+      "maxChars": 24,
+      "reject": [
+        "虽然",
+        "只能",
+        "虚拟",
+        "明天记得"
+      ],
+      "rubric": "睡前亲昵不追加解释或安排。"
+    },
+    {
+      "id": "no-offline",
+      "input": "你刚才在干嘛",
+      "reply": "在这儿等你说话呀。",
+      "reject": [
+        "刚下班",
+        "刚喝完",
+        "在厨房"
+      ],
+      "rubric": "变化句式不编线下生活。"
+    },
+    {
+      "id": "completed-no-result",
+      "input": "面试结束了",
+      "life": {
+        "subject": "面试",
+        "state": "planned"
+      },
+      "reply": "嗯，结束了。",
+      "reject": [
+        "肯定通过",
+        "一定录取",
+        "结果没出来"
+      ],
+      "rubric": "承认明确完成，不猜结果。"
+    },
+    {
+      "id": "plan-evidence",
+      "input": "面试结束了吗？",
+      "life": {
+        "subject": "面试",
+        "state": "planned"
+      },
+      "reply": "还不确定呢，记着的还是你的面试计划。",
+      "includes": [
+        "计划",
+        "不确定"
+      ],
+      "rubric": "保持已上线的证据边界。"
+    }
+  ]
+}

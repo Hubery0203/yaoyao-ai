@@ -33,7 +33,7 @@ import {
   type SelfExpressionLevel,
   type TopicContinuity,
 } from "@yaoyao/application";
-import {conversationStyle} from '../conversation/style.js';
+import {conversationStyle,isSuggestionRefusal,resolvedShortChoice} from '../conversation/style.js';
 
 /** Object preferences do not by themselves address affection to YaoYao. */
 function hasDirectedAffection(text:string):boolean {
@@ -187,7 +187,7 @@ export function baselineDecision(input: DecisionInput): Decision {
   const style=conversationStyle(text);
   if(style.topicShift){topicContinuity='shift';selfExpression='low';}
   else if(style.disclosure||style.styleFeedback)topicContinuity='open';
-  if(style.quiet||style.noQuestions||style.acknowledgment||style.disclosure||style.styleFeedback){
+  if(style.quiet||style.noQuestions||style.acknowledgment||style.disclosure||style.styleFeedback||style.casualShare||style.briefAffection||style.farewell||isSuggestionRefusal(text)||(resolvedShortChoice(text,input.recentConversation)&&!['comforting','serious'].includes(conversationMode))){
     followUp='none';initiative='low';selfExpression='low';
     if(style.quiet||style.acknowledgment||style.disclosure||style.styleFeedback){primaryIntent='acknowledge';secondaryIntents=[];}
   }

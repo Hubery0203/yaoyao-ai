@@ -41,6 +41,12 @@ jobs:
       - run: node scripts/evaluate-quality.mjs --mode mock --out quality-report.json
       - run: node scripts/evaluate-experience.mjs --mode mock --out experience-report.json
       - run: node scripts/evaluate-experience.mjs --mode mock --fixtures tests/fixtures/experience-009.json --max-calls 30 --out experience-009-report.json
+      - run: node scripts/evaluate-experience.mjs --mode mock --fixtures tests/fixtures/experience-010.json --max-calls 24 --out experience-010-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experience-010-quality-report
+          path: experience-010-report.json
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: experience-009-quality-report

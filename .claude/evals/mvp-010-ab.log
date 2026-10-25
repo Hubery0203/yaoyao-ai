@@ -1,0 +1,5 @@
+010 local candidate: build/lint/boundaries PASS; unit735/contracts2 PASS; integration236/e2e3 PASS; Node21 PASS. Real local PG, serial disposable DB harness; no Linux CI executed yet.
+010 mock12/14 attempts PASS, 009 mock12/15 PASS, 008 mock10/11 PASS, quality12 PASS. Finite deterministic mocks, not naturalness approval.
+Capability: opt-in preview/confirm/cancel/expiry/CAS, immediate outreach-only stop, wall-clock/DST, add/cancel/reminder status, bound owner/channel/source, restart/idempotency, no control memory/model write PASS.
+Regression: old Weixin/batching/limits/photo/backup/owner/RLS/auth/HTTP tests PASS.
+Live text evaluation PENDING; human tone PENDING; GitHub CI PENDING; Tokyo publishing PENDING.
