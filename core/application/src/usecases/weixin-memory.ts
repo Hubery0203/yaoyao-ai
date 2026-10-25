@@ -7,7 +7,8 @@ import {experienceStore} from './experience.js';
 import {correctOwnedMemory} from './memory-management.js';
 import {persistUserMessage,persistAssistantMessage,findCompletedTurn} from './conversation.js';
 const HELP='记忆操作：\n记忆列表\n记住：我喜欢桂花乌龙茶\n纠正记忆 编号：我不喜欢桂花乌龙茶了\n停用记忆 编号\n修改会先预览，10 分钟内发送“确认 六位码”才生效；可发送“取消 六位码”。停用只停止长期召回，聊天历史保留。重要记忆请到网页处理。';
-const reference=(id:string)=>id.slice(0,8).toUpperCase();
+// UUIDv7 prefixes share a timestamp; use random suffix bytes for owner-visible references.
+const reference=(id:string)=>id.replaceAll('-','').slice(-8).toUpperCase();
 function oneFact(text:string){const c=extractExplicitMemories(text);return c.length===1&&c[0].kind==='fact'&&c[0].type==='SEMANTIC'&&c[0].content===text.trim().replace(/[。！.!]$/u,'')?c[0]:null;}
 /** Exact command protocol, not model interpretation. The full reply and changes commit together. */
 export async function handleWeixinMemoryCommand(tx:PersistenceTransaction,input:{userId:UserId;text:string;requestId:string}):Promise<string|null>{
