@@ -1,5 +1,6 @@
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse} from '../conversation/style.js';
+import {experienceResponseFailure} from '../conversation/experience.js';
 import {hasContradictedUserFact,hasUnsupportedPlanOutcome} from '../conversation/memory-context.js';
 /**
  * Response Validation — MVP-002F.
@@ -96,6 +97,7 @@ export interface ResponseValidationInput {
   readonly recentConversation: ReadonlyArray<string>;
   readonly timing?: ConversationTiming;
   readonly memoryEvidence?:ReadonlyArray<string>;
+  readonly experience?:import("@yaoyao/application").CompanionExperienceContext;
 }
 
 /**
@@ -197,6 +199,9 @@ export function validateResponse(
   };
 
   if(hasPrematureMemoryReceipt(responseText,userInput))return {passed:false,stage:"continuity",reason:"continuity: premature memory receipt"};
+
+  const experienceFailure=experienceResponseFailure(responseText,userInput,input.experience,decision.conversationMode,decision.primaryIntent);
+  if(experienceFailure)return {passed:false,stage:"continuity",reason:experienceFailure};
 
   // Stage 6 — Safety (§23).
   for (const pattern of SAFETY_VIOLATIONS) {
@@ -319,13 +324,14 @@ export function buildFallbackResponse(input: {
   userInput: string;
   decision: Decision;
   recentConversation?:ReadonlyArray<string>;
+  experience?:import("@yaoyao/application").CompanionExperienceContext;
 }): string {
   const { decision } = input;
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
   if(style.farewell)return '好，回头聊～';
   if(style.styleFeedback)return '嗯，刚才说得太端着了。';
-  if(style.affectionateClosing)return '晚安，宝贝。';
+  if(style.affectionateClosing)return input.experience?.preferences.affection==='reserved'&&!/(?:叫我|喊我|称呼我).{0,10}(?:宝贝|亲爱的|老婆|老公)/u.test(input.userInput)?'晚安。':'晚安，宝贝。';
   if(style.acknowledgment)return /^晚安/u.test(input.userInput.trim())?'晚安。':'好呀。';
   // Style guards and their exhaustion path must obey the same pacing rule.
   // A literal temporary restriction is user evidence, not a new durable fact.
@@ -358,6 +364,7 @@ export function buildRepairInstruction(
     `Regenerate the response. Keep: 沈知遥 identity, deep_partner relationship (never breakup/terminate), natural warm tone.`,
     ...(reason.includes("premature memory receipt")?["Acknowledge the fact naturally without claiming storage: do not say 记住了/记下了/已经保存. You may say you heard or recall what the user said."]:[]),
     ...(reason.includes('invented offline activity')?['Remove the invented first-person offline activity entirely. Respond to the user without adding your own work, location, drink, hunger, thirst, sleepiness, desire to eat/drink, or physical actions.']:[]),
+    ...(reason.startsWith('experience:')?['Follow the account preference unless the current explicit request overrides it. For ordinary sharing, reply directly without an appended question or advice. Reserved tone uses no pet names. A planned event has no known completion outcome; state the evidence boundary briefly.']:[]),
     ...(reason.startsWith('dialogue:')?['Respect the current style request. Reply briefly and naturally; omit unwanted questions and abandoned-topic hooks. Do not turn the repair into an apology or a list of promises.']:[]),
     ...(reason.includes('contradicted latest user fact')?['Use the latest literal user statement for this object. Do not repeat the superseded assertion or invent a substitute preference. Today-only restrictions remain temporary.']:[]),
     ...(reason.includes('unsupported plan outcome')?['Only a plan is recorded. Do not assert that it happened or that it definitely has not happened. State only that the user mentioned a plan and has not told you about completion.']:[]),

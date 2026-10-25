@@ -19,7 +19,7 @@ export async function readMemoryDetail(tx:PersistenceTransaction,userId:UserId,m
     if(!row)continue;
     const e=row.event;
     const text=e.type==="USER_MESSAGE"?e.payload.text:
-      e.type==="MEMORY_CORRECTED"&&e.actor==="USER"&&e.payload.operation==="owner_corrected"?e.payload.statement:undefined;
+      e.type==="MEMORY_CORRECTED"&&e.actor==="USER"&&["owner_corrected","owner_recorded"].includes(String(e.payload.operation))?e.payload.statement:undefined;
     if(typeof text==="string")sources.push({text,occurredAt:e.occurredAt.toISOString(),kind:e.type==="USER_MESSAGE"?"conversation":"owner_correction"});
   }
   const slot=await tx.continuityProcessing.findSlotByMemory?.(userId,memory.yaoyaoId,memory.memoryId);
@@ -61,5 +61,6 @@ export async function correctOwnedMemory(tx:PersistenceTransaction,input:{userId
   await tx.memories.save(input.userId,correction.superseded);
   await tx.memories.insert(correction.current);
   await store.setSlot(input.userId,old.yaoyaoId,slot.slot,candidate.value,correction.current.memoryId,recorded.aggregateSeq);
+  await tx.experience?.setMuted(input.userId,slot.slot,null);
   return {memoryId:String(correction.current.memoryId)};
 }

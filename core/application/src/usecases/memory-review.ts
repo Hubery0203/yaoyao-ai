@@ -39,6 +39,7 @@ export async function resolveMemoryCandidate(tx:PersistenceTransaction,userId:Us
       userId,yaoyaoId:row.yaoyaoId,causationId:user.event.eventId,correlationId:jobId,
       payload:{memoryId:memory.memoryId,supersedes:previous?.memoryId??null,operation:"owner_confirmed"}})});
     await store.setSlot(userId,row.yaoyaoId,candidate.slot,candidate.value,memory.memoryId,confirmation.aggregateSeq);
+    await tx.experience?.setMuted(userId,candidate.slot,null);
     result.memoryId=memory.memoryId;
   }
   await store.recordResolution(userId,row.yaoyaoId,jobId,ordinal,result);

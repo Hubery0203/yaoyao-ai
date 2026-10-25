@@ -1,3 +1,5 @@
+import {isMemoryCommandText} from "../experience.js";
+import {recordLifeStatement} from "./experience.js";
 import {
   DomainEvent, Memory, MEMORY_POLICY, decideMemory, extractExplicitMemories, lexicalNovelty, normalizeMemoryText,
   type UserId, type EventId, type MemoryCandidate,
@@ -21,7 +23,9 @@ export async function processContinuityJob(tx:PersistenceTransaction,userId:User
   const user=events.find(e=>e.event.type==="USER_MESSAGE" && e.event.correlationId===job.requestId);
   if(!assistant || !user || typeof user.event.payload.text!=="string") throw new Error("Incomplete continuity turn");
   const source=user.event.payload.text;
-  const candidates=proposed??extractExplicitMemories(source);
+  await recordLifeStatement(tx,userId,{text:source,occurredAt:user.event.occurredAt,sequence:user.aggregateSeq,timezone:typeof user.event.payload.timezone==="string"?user.event.payload.timezone:undefined});
+  const muted=tx.experience?await tx.experience.mutedSlots(userId):{};
+  const candidates=isMemoryCommandText(source)?[]:proposed??extractExplicitMemories(source);
   if(candidates.length>10) throw new Error("Too many candidates");
   const container=await tx.memoryContainers.findOwned(userId);
   const all=await tx.memories.listOwned(userId,{status:"CONSOLIDATED",limit:200});
@@ -35,6 +39,7 @@ export async function processContinuityJob(tx:PersistenceTransaction,userId:User
       novelty:lexicalNovelty(candidate.content,all.map(m=>m.content)),recurrence:Math.min(1,support/3)};
     let decision=decideMemory({candidate,source,inputs,previousValue:previous?.value,
       existingExact:!!previous && normalizeMemoryText(previous.value)===normalizeMemoryText(candidate.value)});
+    if(Object.hasOwn(muted,candidate.slot))decision={...decision,outcome:"held",reason:"owner_disabled"};
     if(previous && decision.outcome==="consolidated" && (await tx.memories.findOwned(userId,previous.memoryId)).type==="CORE") {
       decision={...decision,outcome:"held",reason:"awaiting_core_confirmation"};
     }

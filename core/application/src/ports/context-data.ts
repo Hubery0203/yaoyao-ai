@@ -21,6 +21,7 @@ import type {
 } from "@yaoyao/domain";
 
 export interface PersonaData {
+  readonly experience?:import("../experience.js").CompanionExperienceContext;
   readonly yaoyao: YaoYaoAggregate;
   readonly relationship: Relationship;
   readonly state: CoreState;

@@ -40,6 +40,7 @@ import {
   type YaoYaoId,
 } from "@yaoyao/domain";
 import { randomUUID } from "node:crypto";
+import {estimateTokens} from "../context/budget.js";
 import { ContextAssembler } from "../context/assembly.js";
 import { createTrace } from "../contracts/trace.js";
 import { DecisionEngine, renderDecisionGuidance } from "../decision/engine.js";
@@ -53,6 +54,7 @@ import { AIRouter } from "../router/router.js";
 import { ResilientLLMInvoker } from "../router/resilient.js";
 import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 import {renderConversationContinuity} from "./continuity.js";
+import {experienceForTurn,renderCompanionExperience} from "./experience.js";
 import {conversationStyle} from './style.js';
 import {projectTurnMemories,focusDisclosureHistory,selectedMemoryEvidence} from './memory-context.js';
 import {validationFailureSummary} from "./quality.js";
@@ -218,6 +220,8 @@ export class ConversationOrchestrator {
           excludeRequestId: requestId,
         })
       : [];
+    const experience=experienceForTurn(personaData.experience,input.text,conversationHistory,turnTime);
+    const experienceGuidance=renderCompanionExperience(experience,input.text);
     const recentConversationTexts = conversationHistory.map(
       (t) => `${t.role === "user" ? "User" : "YaoYao"}: ${t.text}`,
     );
@@ -245,6 +249,7 @@ export class ConversationOrchestrator {
     const memoryContext=projectTurnMemories(retrievedMemoryContext,input.text,recentConversationTexts);
     const assembled = this.assembler.assemble({
       data: personaData,
+      additionalOverheadTokens:experienceGuidance?estimateTokens(experienceGuidance):0,
       inputText: input.text,
       memoryContext,
       conversationHistory:focusDisclosureHistory(input.text,conversationHistory),
@@ -311,6 +316,7 @@ export class ConversationOrchestrator {
         assembled.promptContext.systemPrompt,
         renderDecisionGuidance(decision),
         renderConversationContinuity(input.text,recentConversationTexts.slice(-6),{now:turnTime,turns:conversationHistory}),
+        experienceGuidance,
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInputInContext:true,
@@ -320,7 +326,7 @@ export class ConversationOrchestrator {
       outputSchemaName: "llm-output-contract-v1",
       timeoutMs: Math.min(30000,Math.max(1,modelDeadline-Date.now())),
       metadata: {
-        runtimeVersion: "mvp-006ef",
+        runtimeVersion: "mvp-008",
         contextVersion: "c0-c7-v1",
         requestId: input.traceId,
       },
@@ -348,6 +354,7 @@ export class ConversationOrchestrator {
       userInput: input.text,
       recentConversation: recentConversationTexts.slice(-6),
       memoryEvidence:selectedMemoryEvidence(memoryContext),
+      experience,
       timing:{now:turnTime,turns:conversationHistory},
     });
     const failures=validationOutcome.passed?[]:[validationFailureSummary(validationOutcome)];
@@ -382,6 +389,7 @@ export class ConversationOrchestrator {
         userInput: input.text,
         recentConversation: recentConversationTexts.slice(-6),
         memoryEvidence:selectedMemoryEvidence(memoryContext),
+      experience,
         timing:{now:turnTime,turns:conversationHistory},
       });
       if(!validationOutcome.passed)failures.push(validationFailureSummary(validationOutcome));
@@ -396,6 +404,7 @@ export class ConversationOrchestrator {
       finalResponse = buildFallbackResponse({
         userInput: input.text,
         decision,
+        experience,
         recentConversation:[...selectedMemoryEvidence(memoryContext),...recentConversationTexts],
       });
     }

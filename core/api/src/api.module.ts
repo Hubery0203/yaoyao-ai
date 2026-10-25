@@ -1,3 +1,4 @@
+import {CompanionModule} from "./companion/companion.module.js";
 import { WeixinModule } from "./weixin/weixin.module.js";
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./auth/auth.module.js";
@@ -21,6 +22,7 @@ import { YaoyaoModule } from "./yaoyao/yaoyao.module.js";
 @Module({
   imports: [
     WeixinModule,
+    CompanionModule,
     HealthModule,
     AuthModule,
     UsersModule,

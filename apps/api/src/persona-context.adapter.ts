@@ -42,6 +42,7 @@ export class TransactionalContextDataAdapter implements ContextDataPort {
         (async()=>{if(!tx.events.readWindow)return listEvents(tx,{userId,limit:20});return tx.events.readWindow(userId,yaoyao.yaoyaoId,{limit:20});})(),
       ]);
       return {
+        ...(tx.experience?{experience:{activatedAt:await tx.experience.activationTime(),preferences:(await tx.experience.preferences(userId)).settings,lifeEvents:await tx.experience.lifeEvents(userId,30)}}:{}),
         yaoyao,
         relationship,
         state,

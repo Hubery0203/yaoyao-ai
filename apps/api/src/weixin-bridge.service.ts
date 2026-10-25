@@ -5,7 +5,7 @@ import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {TRANSACTION_MANAGER,recordAcceptedOutreach,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
+import {TRANSACTION_MANAGER,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
 import {loadConfig,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,type WeixinRow} from '@yaoyao/infrastructure';
@@ -102,6 +102,8 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
     if(!this.gate.acquire()){await sleep(500);continue;}
     try{await processWeixinMessage(row,store,client,async(userId,text,key)=>{
      this.gate.registerOwner(userId);
+     const command=isMemoryCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinMemoryCommand(tx,{userId:userId as UserId,text,requestId:key})):null;
+     if(command!==null)return command;
      const result=await this.core.converse({userId:userId as UserId,text,requestId:key,traceId:randomUUID()});
      try{this.quality?.record(summarizeTurnQuality(result.trace));}catch{/* Telemetry cannot fail Core replay. */}
      try{this.performance?.record(summarizeTurnPerformance(result.trace),'weixin');}catch{/* Numeric telemetry only. */}

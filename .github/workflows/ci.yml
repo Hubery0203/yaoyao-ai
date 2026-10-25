@@ -38,6 +38,12 @@ jobs:
       - run: npm run test:web
       - run: node --test tools/weixin-w1/probe.test.mjs
       - run: node scripts/evaluate-quality.mjs --mode mock --out quality-report.json
+      - run: node scripts/evaluate-experience.mjs --mode mock --out experience-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experience-quality-report
+          path: experience-report.json
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: conversation-quality-report

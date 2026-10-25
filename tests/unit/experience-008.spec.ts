@@ -1,0 +1,31 @@
+import {describe,it,expect} from 'vitest';
+import {DEFAULT_PREFERENCES,validPreferences,validDay,parseLifeChange,lifeExpiry,lifeIsActive,selectLifeTarget,isMemoryCommandText,type LifeEvent,type CompanionExperienceContext} from '@yaoyao/application';
+import {experienceForTurn,renderCompanionExperience,experienceResponseFailure} from '../../core/runtime/src/conversation/experience.js';
+const now=new Date('2026-10-25T15:30:00Z');
+const event=(extra:Partial<LifeEvent>={}):LifeEvent=>({id:'one',subject:'面试',state:'planned',scheduledDay:'2026-10-27',declaredAt:now,expiresAt:new Date('2026-10-30T00:00Z'),sourceSequence:10,version:1,...extra});
+const context=(extra:Partial<CompanionExperienceContext>={}):CompanionExperienceContext=>({preferences:{...DEFAULT_PREFERENCES},lifeEvents:[event()],...extra});
+describe('008 owner settings and literal life policy',()=>{
+ it('validates timezones, lengths and closed enum values',()=>{expect(validPreferences({...DEFAULT_PREFERENCES})).toBe(true);for(const extra of [{timezone:'Moon/Base'},{nickname:'x'.repeat(21)},{nickname:'a\nb'},{length:'tiny'},{affection:'anything'},{questions:'always'},{advice:'always'}])expect(validPreferences({...DEFAULT_PREFERENCES,...extra} as never)).toBe(false);});
+ it('uses the receipt timezone across midnight',()=>{expect(parseLifeChange('我明天要面试',now,'Asia/Tokyo')).toMatchObject({scheduledDay:'2026-10-27',state:'planned'});expect(parseLifeChange('我明天要面试',now,'America/Los_Angeles')).toMatchObject({scheduledDay:'2026-10-26'});});
+ it.each(['面试结束了吗？','如果我明天要面试','他说“我明天要面试”','我明天要面试\n我后天要考试','帮我准备面试','我2026-02-30要面试','我明天可能要面试'])('does not turn quoted, hypothetical or uncertain text into facts: %s',text=>expect(parseLifeChange(text,now,'UTC')).toBeNull());
+ it('validates calendar days including leap dates',()=>{expect(validDay('2028-02-29')).toBe(true);for(const day of ['2026-02-29','2026-13-01','2026-1-01'])expect(validDay(day)).toBe(false);});
+ it('only explicit verbs change outcomes and rescheduling is marked',()=>{expect(parseLifeChange('面试改到后天',now,'UTC')).toMatchObject({reschedule:true,state:'planned'});for(const [word,state] of [['开始了','ongoing'],['完成了','completed'],['结束了','completed'],['取消了','cancelled']])expect(parseLifeChange('面试'+word,now,'UTC')?.state).toBe(state);});
+ it('expiry removes recall without inventing completion',()=>{const e=event();expect(lifeIsActive(e,new Date('2026-10-29T12:00Z'),'UTC')).toBe(false);expect(e.state).toBe('planned');expect(lifeExpiry({subject:'面试',state:'completed',scheduledDay:null},now,'UTC').getTime()-now.getTime()).toBe(7*86400000);});
+ it('refuses ambiguous outcomes or rescheduling of repeated subjects',()=>{const events=[event(),event({id:'two',scheduledDay:'2026-10-28'})];expect(selectLifeTarget(events,{subject:'面试',state:'completed',scheduledDay:null}).ambiguous).toBe(true);expect(selectLifeTarget(events,{subject:'面试',state:'planned',scheduledDay:'2026-10-27'}).target?.id).toBe('one');expect(selectLifeTarget(events,{subject:'面试',state:'planned',scheduledDay:'2026-10-29',reschedule:true}).ambiguous).toBe(true);});
+});
+describe('008 read-only current-turn projection and response gate',()=>{
+ it('captures fresh outcome before background job, without mutating stored context',()=>{const c=context();const p=experienceForTurn(c,'面试结束了',[],now)!;expect(p.lifeEvents[0].state).toBe('completed');expect(c.lifeEvents[0].state).toBe('planned');});
+ it('does not replay older history over a manual change',()=>{const c=context({lifeEvents:[event({state:'cancelled',sourceSequence:30})]});const p=experienceForTurn(c,'嗯', [{role:'user',text:'我明天要面试',sequence:20,occurredAt:now}],now)!;expect(p.lifeEvents[0].state).toBe('cancelled');});
+ it('does not import conversations from before feature activation',()=>{const p=experienceForTurn(context({lifeEvents:[],activatedAt:now}),'嗯',[{role:'user',text:'我明天要面试',sequence:2,occurredAt:new Date(now.getTime()-1)}],now)!;expect(p.lifeEvents).toHaveLength(0);});
+ it('uses original timezone and receipt date for recent messages',()=>{const p=experienceForTurn(context({lifeEvents:[]}), '嗯',[{role:'user',text:'我明天要面试',sequence:20,occurredAt:now,timezone:'UTC'}],now)!;expect(p.lifeEvents[0].scheduledDay).toBe('2026-10-26');});
+ it('keeps two dated instances separate and does not guess which one ended',()=>{const p=experienceForTurn(context({lifeEvents:[event(),event({id:'two',scheduledDay:'2026-10-28'})]}),'面试结束了',[],now)!;expect(p.lifeEvents.map(e=>e.state)).toEqual(['planned','planned']);});
+ it('projects expiry and bounds context, without private identifiers',()=>{const c=context({lifeEvents:[event({expiresAt:new Date(0)})]});expect(experienceForTurn(c,'嗯',[],now)?.lifeEvents).toHaveLength(0);const rendered=renderCompanionExperience(context(),'嗯');expect(rendered).not.toContain('sourceSequence');expect(rendered).not.toContain('"id"');expect(rendered).toContain('不自动安排主动联系');});
+ it('ignores settings gate in legacy contexts',()=>expect(experienceResponseFailure('宝贝？','今天买花了',undefined,'warm','chat')).toBeNull());
+ it('rejects unwanted followups, keeps requested help available',()=>{expect(experienceResponseFailure('买的什么花？','今天买花了',context(),'warm','chat')).toContain('unwanted');expect(experienceResponseFailure('你要哪种方案？','帮我选花',context(),'warm','answer')).toBeNull();});
+ it('respects reserved affection and current explicit request',()=>{const c=context({preferences:{...DEFAULT_PREFERENCES,affection:'reserved'}});expect(experienceResponseFailure('宝贝，晚安','晚安',c,'warm','chat')).toContain('reserved');expect(experienceResponseFailure('宝贝，晚安','叫我宝贝',c,'warm','chat')).toBeNull();});
+ it('does not assert that a merely planned event has or has not completed',()=>{for(const text of ['已经完成了','还没结束','是的'])expect(experienceResponseFailure(text,'面试结束了吗？',context(),'warm','answer')).toContain('ungrounded');expect(experienceResponseFailure('你还没说结果呢。','面试结束了吗？',context(),'warm','answer')).toBeNull();});
+});
+describe('008 explicit memory protocol routing',()=>{
+ it.each(['记忆列表','记忆帮助','记住：我喜欢咖啡','纠正记忆 ABCD1234：我喜欢咖啡','停用记忆 ABCD1234','确认 ABC123','取消ABC123'])('routes protocol: %s',t=>expect(isMemoryCommandText(t)).toBe(true));
+ it.each(['“记住：我喜欢咖啡”','他说要停用记忆','帮我记住今天的开心','确认一下明天几点','取消回复','我想问记忆列表是什么'])('keeps ordinary text in conversation: %s',t=>expect(isMemoryCommandText(t)).toBe(false));
+});

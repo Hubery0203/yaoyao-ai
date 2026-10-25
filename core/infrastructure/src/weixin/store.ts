@@ -1,6 +1,6 @@
 import {Client,type Pool,type PoolClient} from 'pg';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
-import {batchIsReady,isReplyCancellation,isOutreachStop,localOutreachClock,isQuietMinute,validateOutreachSettings,type OutreachSettings} from '@yaoyao/application';
+import {isMemoryCommandText,batchIsReady,isReplyCancellation,isOutreachStop,localOutreachClock,isQuietMinute,validateOutreachSettings,type OutreachSettings} from '@yaoyao/application';
 import type {IncomingText,WeixinCredentials} from './client.js';
 export interface WeixinRow {message_key:string;user_id:string;text:string;context_token:string;reply:string|null;stage:string;attempts:number;retry_at:Date;turn_text?:string|null;batch_key?:string|null;origin?:'reactive'|'proactive';created_at?:Date}
 export class WeixinStore {
@@ -100,10 +100,10 @@ export class WeixinStore {
   if(c.paused||c.auth_expired)return;
   const rows=(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') ORDER BY ordinal LIMIT 10 FOR UPDATE",[this.credentials.botId])).rows;
   const first=rows[0];if(!first)return;
-  if(first.stage!=='pending'||first.reply||first.turn_text)return first;
+  if(first.stage!=='pending'||first.reply||first.turn_text||isMemoryCommandText(first.text))return first;
   const batch=[first];let text=first.text;
   for(const row of rows.slice(1)){
-   if(row.stage!=='pending'||row.reply||row.turn_text||row.origin!=='reactive'||row.user_id!==first.user_id||text.length+1+row.text.length>4000||row.created_at-first.created_at>6000)break;
+   if(isMemoryCommandText(row.text)||row.stage!=='pending'||row.reply||row.turn_text||row.origin!=='reactive'||row.user_id!==first.user_id||text.length+1+row.text.length>4000||row.created_at-first.created_at>6000)break;
    batch.push(row);text+='\n'+row.text;
   }
   if(!batchIsReady(first.created_at,batch.at(-1)!.created_at,now))return;

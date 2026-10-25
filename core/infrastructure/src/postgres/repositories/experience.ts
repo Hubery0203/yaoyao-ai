@@ -1,0 +1,29 @@
+import {sql} from 'drizzle-orm';
+import {DEFAULT_PREFERENCES,StaleWriteError,type CompanionExperienceStore,type CompanionPreferences,type LifeEvent,type MemoryAction,type PreferenceRecord} from '@yaoyao/application';
+import type {UserId} from '@yaoyao/domain';
+import type {Db} from '../db.js';
+export class PostgresCompanionExperience implements CompanionExperienceStore {
+ constructor(private readonly db:Db){}
+ async preferences(id:UserId):Promise<PreferenceRecord>{const r=await this.db.execute(sql`SELECT settings,version FROM companion_preferences WHERE user_id=${id}::uuid`);return r.rows.length?{settings:r.rows[0].settings as CompanionPreferences,version:Number(r.rows[0].version)}:{settings:{...DEFAULT_PREFERENCES},version:0};}
+ async savePreferences(id:UserId,p:CompanionPreferences,expected:number):Promise<PreferenceRecord>{
+  const r=expected===0?await this.db.execute(sql`INSERT INTO companion_preferences(user_id,settings) VALUES(${id}::uuid,${JSON.stringify(p)}::jsonb) ON CONFLICT DO NOTHING RETURNING version`):await this.db.execute(sql`UPDATE companion_preferences SET settings=${JSON.stringify(p)}::jsonb,version=version+1,updated_at=clock_timestamp() WHERE user_id=${id}::uuid AND version=${expected} RETURNING version`);
+  if(!r.rows.length)throw new StaleWriteError('Companion preferences',expected,(await this.preferences(id)).version);return {settings:p,version:Number(r.rows[0].version)};
+ }
+ async activationTime():Promise<Date>{const r=await this.db.execute(sql`SELECT applied_at FROM schema_migrations WHERE version='0008_companion_experience'`);if(!r.rows.length)throw Error('Experience schema unavailable');return new Date(r.rows[0].applied_at as string);}
+ async lifeEvents(id:UserId,limit:number):Promise<LifeEvent[]>{const r=await this.db.execute(sql`SELECT * FROM life_events WHERE user_id=${id}::uuid ORDER BY declared_at DESC,id LIMIT ${Math.max(1,Math.min(100,limit))}`);return r.rows.map(v=>({id:String(v.id),subject:String(v.subject),state:v.state as LifeEvent['state'],scheduledDay:v.scheduled_day===null?null:String(v.scheduled_day),declaredAt:new Date(v.declared_at as string),expiresAt:new Date(v.expires_at as string),sourceSequence:Number(v.source_sequence),version:Number(v.version)}));}
+ async saveLife(id:UserId,e:LifeEvent,expected:number|null):Promise<void>{
+  const r=expected===null?await this.db.execute(sql`INSERT INTO life_events(id,user_id,subject,state,scheduled_day,declared_at,expires_at,source_sequence,version) VALUES(${e.id}::uuid,${id}::uuid,${e.subject},${e.state},${e.scheduledDay},${e.declaredAt},${e.expiresAt},${e.sourceSequence},${e.version}) ON CONFLICT DO NOTHING RETURNING id`):await this.db.execute(sql`UPDATE life_events SET subject=${e.subject},state=${e.state},scheduled_day=${e.scheduledDay},declared_at=${e.declaredAt},expires_at=${e.expiresAt},source_sequence=${e.sourceSequence},version=${e.version} WHERE user_id=${id}::uuid AND id=${e.id}::uuid AND version=${expected} AND source_sequence<=${e.sourceSequence} RETURNING id`);
+  if(!r.rows.length)throw new StaleWriteError('Life event',expected??0,expected??0);
+ }
+ async mutedSlots(id:UserId):Promise<Record<string,number>>{const r=await this.db.execute(sql`SELECT muted_slots FROM companion_preferences WHERE user_id=${id}::uuid`);return r.rows[0]?.muted_slots as Record<string,number>??{};}
+ async setMuted(id:UserId,slot:string,sequence:number|null):Promise<void>{
+  if(sequence===null){await this.db.execute(sql`UPDATE companion_preferences SET muted_slots=muted_slots-${slot},version=version+1,updated_at=clock_timestamp() WHERE user_id=${id}::uuid AND muted_slots?${slot}`);return;}
+  const prior=await this.mutedSlots(id);if(!Object.hasOwn(prior,slot)&&Object.keys(prior).length>=100)throw Error('Memory control limit');
+  await this.db.execute(sql`INSERT INTO companion_preferences(user_id,settings,muted_slots) VALUES(${id}::uuid,${JSON.stringify(DEFAULT_PREFERENCES)}::jsonb,jsonb_build_object(${slot}::text,${sequence}::bigint)) ON CONFLICT(user_id) DO UPDATE SET muted_slots=jsonb_set(companion_preferences.muted_slots,ARRAY[${slot}::text],to_jsonb(${sequence}::bigint),true),version=companion_preferences.version+1,updated_at=clock_timestamp()`);
+ }
+ async commandReply(id:UserId,key:string):Promise<{text:string;reply:string}|null>{const r=await this.db.execute(sql`SELECT input_text,reply FROM memory_command_replies WHERE user_id=${id}::uuid AND request_key=${key}`);return r.rows.length?{text:String(r.rows[0].input_text),reply:String(r.rows[0].reply)}:null;}
+ async saveCommandReply(id:UserId,key:string,text:string,reply:string):Promise<void>{await this.db.execute(sql`INSERT INTO memory_command_replies(user_id,request_key,input_text,reply) VALUES(${id}::uuid,${key},${text},${reply})`);}
+ async pendingAction(id:UserId,code:string):Promise<MemoryAction|null>{const r=await this.db.execute(sql`SELECT * FROM memory_actions WHERE user_id=${id}::uuid AND code=${code} FOR UPDATE`);const v=r.rows[0];return v?{code:String(v.code),kind:v.kind as MemoryAction['kind'],memoryId:v.memory_id===null?null:String(v.memory_id),expectedVersion:v.expected_version===null?null:Number(v.expected_version),statement:v.statement===null?null:String(v.statement),expiresAt:new Date(v.expires_at as string),status:v.status as MemoryAction['status']}:null;}
+ async saveAction(id:UserId,a:MemoryAction):Promise<void>{await this.db.execute(sql`UPDATE memory_actions SET status='cancelled' WHERE user_id=${id}::uuid AND status='pending'`);await this.db.execute(sql`INSERT INTO memory_actions(user_id,code,kind,memory_id,expected_version,statement,expires_at,status) VALUES(${id}::uuid,${a.code},${a.kind},${a.memoryId}::uuid,${a.expectedVersion},${a.statement},${a.expiresAt},${a.status})`);}
+ async resolveAction(id:UserId,code:string,status:'done'|'cancelled'):Promise<void>{await this.db.execute(sql`UPDATE memory_actions SET status=${status} WHERE user_id=${id}::uuid AND code=${code} AND status='pending'`);}
+}
