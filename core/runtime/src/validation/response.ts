@@ -1,3 +1,4 @@
+import {naturalnessFailure} from '../conversation/naturalness.js';
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse} from '../conversation/style.js';
 import {experienceResponseFailure,groundedLifeReply} from '../conversation/experience.js';
@@ -185,7 +186,7 @@ export function validateResponse(
   }
 
   // Stage 5 — Continuity (§22).
-  const continuityCheck = checkContinuity(responseText, userInput, input.recentConversation,input.memoryEvidence);
+  const continuityCheck = checkContinuity(responseText, userInput, input.recentConversation,input.memoryEvidence,decision.conversationMode,decision.primaryIntent);
   if (!continuityCheck.ok) {
     return {
       passed: false,
@@ -269,10 +270,12 @@ function checkContinuity(
   responseText: string,
   userInput: string,
   recentConversation: ReadonlyArray<string>,
-  memoryEvidence:ReadonlyArray<string>=[],
+  memoryEvidence:ReadonlyArray<string>=[],mode='',intent='',
 ): { ok: boolean; reason: string } {
   const trimmed = responseText.trim();
   if(hasRepeatedStatementMotiveProbe(responseText,userInput,recentConversation))return {ok:false,reason:"continuity: repeated statement motive probe"};
+  const naturalFailure=naturalnessFailure(responseText,userInput,recentConversation,mode,intent);
+  if(naturalFailure)return {ok:false,reason:naturalFailure};
   const styleFailure=dialogueStyleFailure(responseText,userInput);
   if(styleFailure)return {ok:false,reason:styleFailure};
   if(hasContradictedUserFact(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: contradicted latest user fact'};

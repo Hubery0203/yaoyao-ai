@@ -35,7 +35,7 @@ export function selectLifeTarget(events:readonly LifeEvent[],change:LifeChange):
  return {target:matches.length===1?matches[0]:undefined,ambiguous:matches.length>1};
 }
 export interface MemoryAction {code:string;kind:'remember'|'correct'|'disable';memoryId:string|null;expectedVersion:number|null;statement:string|null;expiresAt:Date;status:'pending'|'done'|'cancelled'}
-export interface CompanionExperienceStore {
+export interface CompanionExperienceStore extends Partial<CompanionActionStore> {
  preferences(userId:UserId):Promise<PreferenceRecord>;
  savePreferences(userId:UserId,settings:CompanionPreferences,expectedVersion:number):Promise<PreferenceRecord>;
  activationTime():Promise<Date>;
@@ -51,3 +51,12 @@ export interface CompanionExperienceStore {
 }
 export interface CompanionExperienceContext {preferences:CompanionPreferences;lifeEvents:readonly LifeEvent[];activatedAt?:Date}
 export function isMemoryCommandText(text:string):boolean{return /^(?:记忆列表|记忆帮助|记住[：:]|纠正记忆\s|停用记忆\s|确认\s*[A-F0-9]{6}$|取消\s*[A-F0-9]{6}$)/iu.test(text.trim());}
+
+export interface PreferenceActionPayload {settings:CompanionPreferences;expectedVersion:number}
+export interface LifeActionPayload {change:LifeChange;targetId:string|null;expectedVersion:number|null;timezone:string;subjectVersions:string}
+export type CompanionAction={code:string;expiresAt:Date;status:'pending'|'done'|'cancelled'}&({kind:'preferences';payload:PreferenceActionPayload}|{kind:'life';payload:LifeActionPayload});
+export interface CompanionActionStore {
+ pendingCompanionAction(userId:UserId,code:string):Promise<CompanionAction|null>;
+ saveCompanionAction(userId:UserId,action:CompanionAction):Promise<void>;
+ resolveCompanionAction(userId:UserId,code:string,status:'done'|'cancelled'):Promise<void>;
+}

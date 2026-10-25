@@ -6,7 +6,7 @@ import {asProposal,DEFAULT_PREFERENCES,ProviderError} from '../core/application/
 const arg=n=>{const i=process.argv.indexOf(n);return i<0?undefined:process.argv[i+1];};
 const mode=arg('--mode')??'mock',out=arg('--out')??'experience-report.json';
 if(!['mock','deepseek'].includes(mode))throw Error('Invalid mode');
-const dataset=JSON.parse(await readFile(new URL('../tests/fixtures/experience-008.json',import.meta.url),'utf8'));
+const dataset=JSON.parse(await readFile(arg('--fixtures')??new URL('../tests/fixtures/experience-008.json',import.meta.url),'utf8'));
 const maxTurns=Number(arg('--max-turns')??dataset.cases.length),maxCalls=Number(arg('--max-calls')??(mode==='mock'?20:0));
 if(!Number.isSafeInteger(maxTurns)||maxTurns<1||maxTurns>dataset.cases.length||!Number.isSafeInteger(maxCalls)||maxCalls<1||maxCalls>40)throw Error('Explicit bounded --max-calls (1..40) required for live evaluation');
 let adapter,calls=0;
@@ -16,7 +16,7 @@ if(mode==='deepseek'){
 }
 const report={dataset:dataset.version,mode,at:new Date().toISOString(),limits:{maxTurns,maxCalls},method:'One ordered candidate run; no automatic corpus rerun, no model judge. Fixed checks only; human tone review required. Synthetic private account, no database or real chat writes.',humanReview:{status:'pending',criteria:['语气像自然聊天，接住具体内容','无多余解释、追问和生活安排','事实有依据，无虚构线下活动','当前求助、支持和偏好冲突处理恰当']},turns:[]};
 for(const f of dataset.cases.slice(0,maxTurns)){
- const messages=[],now=new Date(),before=calls;let caseCalls=0;const rawAttempts=[];
+ const now=new Date(),messages=(f.history??[]).map((t,i)=>({...t,requestId:'synthetic-history-'+i,occurredAt:new Date(now.getTime()-(20-i)*1000),sequence:i+1})),before=calls;let caseCalls=0;const rawAttempts=[];
  const provider={providerId:adapter?.providerId??'mock',modelId:adapter?.modelId??'008-fixture',capabilities:adapter?.capabilities??{supportsStructuredOutput:true,maxContextTokens:8000,costTier:1},usageFor:p=>adapter?.usageFor(p),generate:async request=>{
   if(calls>=maxCalls)throw new ProviderError({code:'UNKNOWN',providerId:'bounded-eval',message:'call ceiling reached',retryable:false});calls++;caseCalls++;
   const started=Date.now();try{const p=adapter?await adapter.generate(request):{response:asProposal(caseCalls===1&&f.initial?f.initial:f.reply),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})};rawAttempts.push({response:p.response.value,latencyMs:Date.now()-started,usage:adapter?.usageFor(p)??null});return p;}catch(e){rawAttempts.push({error:e.code??e.name,latencyMs:Date.now()-started});throw e;}

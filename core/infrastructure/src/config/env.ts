@@ -12,6 +12,7 @@ const EnvSchema = z.object({
   CONVERSATION_MODEL_BUDGET_MS: z.coerce.number().int().min(5000).max(90000).default(45000),
   CONVERSATION_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(2000).default(2000),
   EMOTION_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(2000).default(512),
+  PERFORMANCE_LOG_EVERY: z.coerce.number().int().min(1).max(100).default(10),
   PHOTOS_ENABLED: z.enum(["0","1"]).default("0"),
   OPENAI_IMAGE_API_KEY: z.string().optional(),
   OPENAI_IMAGE_MODEL: z.enum(["gpt-image-2.5-sunburst","gpt-image-2.5-flare","gpt-image-2","gpt-image-1.5"]).default("gpt-image-2.5-sunburst"),

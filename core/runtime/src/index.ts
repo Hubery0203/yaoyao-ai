@@ -71,3 +71,5 @@ export type {
 export {summarizeTurnQuality,validationFailureSummary} from "./conversation/quality.js";
 
 export {summarizeTurnPerformance} from "./conversation/performance.js";
+
+export {naturalnessFailure,renderTurnVariety} from './conversation/naturalness.js';

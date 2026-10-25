@@ -48,3 +48,5 @@ export * from './photos/files.js';
 export * from './photos/openai-image.js';
 export * from './weixin/media.js';
 export * from './weixin/photo-store.js';
+
+export {RollingPerformance} from './observability/rolling-performance.js';

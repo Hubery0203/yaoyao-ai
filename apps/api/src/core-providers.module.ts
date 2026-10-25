@@ -1,3 +1,4 @@
+import {RollingPerformance} from '@yaoyao/infrastructure';
 import { WeixinBridgeService } from "./weixin-bridge.service.js";
 import { WEIXIN_CHANNEL } from "@yaoyao/application";
 import { LiteRuntimeService } from "./lite-runtime.service.js";
@@ -99,10 +100,11 @@ const PG_POOL = "YAOYAO_PG_POOL";
       return {record:(quality:object)=>logger.info({event:"conversation_quality",quality},"Conversation generation quality")};
     }},
     {provide:"CONVERSATION_PERFORMANCE",inject:[APP_CONFIG],useFactory:(config:AppConfig)=>{
-      const logger=createLogger(config).child({component:"conversation-performance"});
+      const logger=createLogger(config).child({component:"conversation-performance"}),rolling=new RollingPerformance(config.PERFORMANCE_LOG_EVERY);
       return {record:(performance:ReturnType<typeof summarizeTurnPerformance>,source:'web'|'weixin')=>{
+        const summary=rolling.record(performance,source);if(!summary)return;
         const memory=process.memoryUsage();
-        logger.info({event:"conversation_performance",source,performance,process:{rssMiB:Math.round(memory.rss/1048576),heapMiB:Math.round(memory.heapUsed/1048576)}},"Conversation resource summary");
+        logger.info({event:"conversation_performance_window",performance:summary,process:{rssMiB:Math.round(memory.rss/1048576),heapMiB:Math.round(memory.heapUsed/1048576)}},"Conversation resource summary");
       }};
     }},
     LiteRuntimeService,
