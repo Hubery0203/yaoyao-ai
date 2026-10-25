@@ -36,7 +36,9 @@ export function conversationStyle(input:string):ConversationStyle {
   const sharedPlan=/^[^。！？!?]{1,200}[。！!]?$/u.test(text)&&extractExplicitMemories(text).some(c=>c.kind==='fact'&&c.type==='SHARED_LIFE');
   const disclosure=!directedAffection&&!/[？?]|为什么|怎么|请问/u.test(text)&&(sharedPlan||/^我(?:现在|最近|今天|今晚|一直)?(?:不再喜欢|不喜欢|喜欢|爱喝|不再喝|不喝|不吃|住在|叫|刚吃了|刚喝了)[^，,。！？!?]{1,100}[。！!]?$/u.test(text));
   const farewell=/^(?:我)?(?:先去忙(?:了)?|去忙了|先忙了|回头聊|待会聊|下次聊|拜拜|走啦|我出门了)[。！!～~\s]*$/u.test(text);
-  const casualShare=!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text)&&text.length<=100&&/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个).{1,80}$/u.test(text);
+  const burst=text.split(/\n+/u).map(t=>t.trim()).filter(Boolean);
+  const burstShare=!detailed&&burst.length>1&&burst.length<=10&&burst.every(t=>t.length<=100)&&/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个)/u.test(burst[0])&&!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text);
+  const casualShare=burstShare||!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text)&&text.length<=100&&/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个).{1,80}$/u.test(text);
   const styleFeedback=/(?:太像|不像|别像|不要像).{0,8}(?:AI|人工智能|机器人|客服)|(?:说话|聊天|回答).{0,8}(?:自然点|自然一点|像真人)|(?:别|不要)(?:这么|那么)?(?:机械|官方|模板化)|废话太多|不要后面的解释|别解释了/iu.test(text);
   const bedtimeInvite=/^(?:我们)?(?:一起)?睡(?:觉)?(?:吧|了)[。！!～~]*$/u.test(text);
   const briefAffection=!detailed&&!/(?:不|没有那么|没那么|不是很|不太)(?:爱|喜欢|想)你/u.test(text)&&!/(?:为什么|怎么|解释|分析|帮我|请问|写个|写一段)/u.test(text)&&(bedtimeInvite||/(?:宝贝|我爱你|喜欢你(?!推荐|的|家)|我想你|亲亲|抱抱|晚安)/u.test(text));

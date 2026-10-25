@@ -82,3 +82,4 @@ export {recordPhotoResponse} from './usecases/photo-history.js';
 
 export * from './companion-commands.js';
 export {handleWeixinCompanionCommand} from './usecases/weixin-companion.js';
+export * from './outreach-commands.js';

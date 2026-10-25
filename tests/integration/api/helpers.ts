@@ -74,7 +74,7 @@ async function setupApiDatabase(): Promise<TestDatabase> {
   const run = await applyMigrations(adminPool, MIGRATIONS_DIR, "test-harness");
   const applied = run.applied;
   if (
-    applied.length !== 10 ||
+    applied.length !== 11 ||
     applied[0] !== "0001_initial_schema" ||
     applied[1] !== "0002_auth_lookup" ||
     applied[2] !== "0003_conversation_event_types" ||
@@ -84,7 +84,8 @@ async function setupApiDatabase(): Promise<TestDatabase> {
     applied[6] !== "0007_weixin_experience" ||
     applied[7] !== "0008_companion_experience" ||
     applied[8] !== "0009_weixin_photos" ||
-    applied[9] !== "0010_companion_commands"
+    applied[9] !== "0010_companion_commands" ||
+    applied[10] !== "0011_weixin_controls"
   ) {
     throw new Error(`unexpected migration run: ${JSON.stringify(run)}`);
   }

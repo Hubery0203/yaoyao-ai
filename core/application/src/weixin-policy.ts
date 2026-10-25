@@ -26,7 +26,7 @@ export function isReplyCancellation(text:string):boolean {
  return /^(?:先别回(?:了)?|不用回(?:复)?(?:了)?|取消回复)[。！!\s]*$/u.test(text.trim());
 }
 export function isOutreachStop(text:string):boolean {
- return /^(?:别主动找我(?:了)?|不要主动联系我(?:了)?|关闭主动联系|停止主动联系)[。！!\s]*$/u.test(text.trim());
+ return /^(?:别主动找我(?:了)?|不要主动联系我(?:了)?|关闭主动联系|停止主动联系|暂停主动联系)[。！!\s]*$/u.test(text.trim());
 }
 /** A bounded window allows a burst to settle without postponing an endless stream. */
 export function batchIsReady(first:Date,last:Date,now:Date):boolean {
