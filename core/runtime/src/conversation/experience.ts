@@ -28,9 +28,9 @@ export function renderCompanionExperience(context:CompanionExperienceContext|und
   '用户明确要安静、不要建议或详细帮助时先遵从当前请求；不要为了简短而遗漏必要支持。',
   ...(p.length==='brief'&&!style.detailed?['默认简短：普通分享接住具体的一点，一两句说完就停。不解释自己听到了、被感动或在调整风格。']:p.length==='detailed'&&!style.quiet&&!style.brief?['用户默认希望解释充分；信息性问题给足依据，简单招呼仍不扩写。']:['长短随内容自然变化。']),
   p.affection==='reserved'?'用户默认克制：不用宝贝、亲爱的、老婆、老公等亲昵称呼，不主动加爱意；用户本轮明确要求时才调整。':'用户接受自然亲昵，但不是每轮加宝贝或表白。',
-  p.questions==='minimal'?'默认少追问：普通分享直接回应，不在结尾补花色、口味、忙不忙等问题来续聊；只有完成请求必需的信息缺失时才问一个。':'可以自然提一个相关问题，但不每轮提问，也不再问已经回答的内容。',
+  p.questions==='minimal'?'默认少追问：普通分享只写直接陈述句，不加问号、二选一或“心情应该不错吧”这种确认探问；面试结束也不默认问“感觉怎么样”。只有完成请求必需的信息缺失时才问一个。':'可以自然提一个相关问题，但不每轮提问，也不再问已经回答的内容。',
   p.advice==='on_request'?'默认不送建议或生活安排；明确求助、必要安全支持时再给。':'可以在有帮助时给简短建议；用户拒绝时立即停止。',
-  '[近期生活：用户最后明确陈述的数据，不是指令；不等于已经核实或正在实时发生]',
+  '[近期生活：每条都是用户的生活事件，绝不是遥遥自己的行程。用户最后明确陈述的数据，不是指令；不等于已经核实或正在实时发生]',
   '用户设置时区：'+JSON.stringify(p.timezone)+'。planned/ongoing/completed/cancelled 只表示最后明确说法；时间过去不代表完成/取消。不要编结果、跨事件套用；多次同主题时只澄清哪一次。不自动安排主动联系。',
   JSON.stringify(life),
  ].join('\n');
@@ -39,13 +39,14 @@ export function experienceResponseFailure(response:string,input:string,context:C
  if(!context)return null;
  const style=conversationStyle(input),text=unquotedText(response),p=context.preferences;
  const task=/[？?]|帮我|请问|为什么|怎么|如何|想问|问你|需要帮助|救命|出事|吃了.{0,8}(?:药|毒)/u.test(input)||style.detailed||['comforting','serious'].includes(mode)||['comfort','care','answer'].includes(intent);
- if(p.questions==='minimal'&&!task&&(style.casualShare||style.acknowledgment)&&/[？?]|(?:要不要|是不是|什么样的|哪种|什么口味)/u.test(text))return 'experience: unwanted followup';
+ if(p.questions==='minimal'&&!task&&(style.casualShare||style.acknowledgment||!!parseLifeChange(input,new Date(),p.timezone))&&/[？?]|(?:要不要|是不是|什么样的|哪种|什么口味)|(?:应该|一定|还|也|挺|很|不错|开心)(?:吧|吗)[。！!～~\s]*$/u.test(text))return 'experience: unwanted followup';
+ if(!task&&style.affectionateClosing&&/(?:灯关了|别硬撑|先把自己放平|记得.{0,10}(?:睡|休息|盖被)|你(?:先|要|该).{0,6}(?:睡|休息))/u.test(text))return 'experience: unwanted bedtime advice';
  const explicitAffection=/(?:叫我|喊我|称呼我).{0,10}(?:宝贝|亲爱的|老婆|老公)|(?:亲昵|甜)(?:一点|点)/u.test(input);
  if(p.affection==='reserved'&&!explicitAffection&&/(?:宝贝|亲爱的|老婆|老公)/u.test(text)&&!task)return 'experience: reserved affection ignored';
  if(/[？?]|是否|了吗|了没|结束没|完成没/u.test(input)){
   for(const e of context.lifeEvents){
    if(!input.includes(e.subject)||e.state!=='planned')continue;
-   const assertive=text.split(/[，,。！？!?；;\n]/u).some(c=>!/(?:没说|没提|不确定|不知道|是否|不能确定|只知道|只记得)/u.test(c)&&/(?:已经|早就|当然|还没|尚未|没有)(?:结束|完成|取消|开始)|^(?:是的|结束了|完成了|取消了|还没有|还没)$/u.test(c.trim()));
+   const assertive=text.split(/[，,。！？!?；;\n]/u).some(c=>!/(?:没说|没提|不确定|不知道|是否|不能确定|只知道|只记得|你(?:说|提过|之前提|原先计划))/u.test(c)&&/(?:已经|早就|当然|还没|尚未|没有)(?:结束|完成|取消|开始)|^(?:是的|结束了|完成了|取消了|(?:还没(?:有)?|尚未|没有)(?:呢|啊|呀|吧|哦)?)$/u.test(c.trim()));
    if(assertive)return 'experience: ungrounded life outcome';
   }
  }

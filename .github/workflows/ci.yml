@@ -114,6 +114,17 @@ jobs:
       - run: npm prune --omit=dev
       - run: node scripts/package-linux.mjs
       - run: sha256sum yaoyao-linux-x64.tar.gz > yaoyao-linux-x64.sha256
+      # A small, independently checksummed code bundle permits verified overlays
+      # when package-lock and the deployed Linux dependency/runtime base are unchanged.
+      - run: tar -czf yaoyao-linux-code.tar.gz -C release package.json package-lock.json core apps db deploy RELEASE.json
+      - run: sha256sum yaoyao-linux-code.tar.gz > yaoyao-linux-code.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yaoyao-linux-code
+          path: |
+            yaoyao-linux-code.tar.gz
+            yaoyao-linux-code.sha256
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: yaoyao-linux-x64

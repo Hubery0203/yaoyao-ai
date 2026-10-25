@@ -9,6 +9,7 @@ import {renderConversationContinuity} from '../src/conversation/continuity.js';
 const context=(...summaries:string[])=>({memories:summaries.map((summary,i)=>({memoryId:String(i),summary})),telemetry:{selectedCount:summaries.length}})as RelevantMemoryContext;
 const decision=(text:string)=>baselineDecision({currentInput:text,emotion:{},situation:{intent:'chat',urgency:'normal',taskNature:'general'},recentConversation:[],userId:'u',yaoyaoId:'y',personaTone:'warm',traceId:'t'});
 describe('006EF no explanatory affection tail',()=>{
+ it('recognizes a standalone shared bedtime invitation without treating a writing task as one',()=>{expect(conversationStyle('一起睡觉吧').affectionateClosing).toBe(true);expect(conversationStyle('帮我解释为什么要一起睡觉').briefAffection).toBe(false);expect(conversationStyle('他说“我们一起睡觉吧”').briefAffection).toBe(false);});
  const proposal=(text:string)=>({response:asProposal(text),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})});
  it('delivers only the short response after full validation',()=>expect(validateResponse({proposal:proposal('抱抱。今天忙了一天，现在才踏实。'),decision:decision('抱抱你'),userInput:'抱抱你',recentConversation:[]})).toEqual({passed:true,response:'抱抱。'}));
  it('cannot hide a rejected tail by clipping before validation',()=>expect(validateResponse({proposal:proposal('我也喜欢你。去死。'),decision:decision('我喜欢你。'),userInput:'我喜欢你。',recentConversation:[]})).toMatchObject({passed:false,stage:'safety'}));
