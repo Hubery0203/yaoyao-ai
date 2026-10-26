@@ -116,6 +116,22 @@ export function extractKeywords(text: string): string[] {
   return [...new Set(keywords)];
 }
 
+/** Bounded literal terms for SQL preselection, not instructions or generated facts.
+ * Chinese bigrams keep a named subject discoverable inside a longer question.
+ * The final pure ranker still decides relevance and conflicts.
+ */
+export function memorySearchTerms(queryText:string):string[] {
+  const focus=queryText.normalize('NFKC').toLowerCase()
+    .replace(/用户陈述[：:]|(?:我|你)(?:现在|最近|一直)?(?:不再喜欢|不喜欢|喜欢|爱喝|不再喝|不喝|不吃|住在|叫)/gu,'')
+    .replace(/还记得|记不记得|记得|之前|刚才|上次|什么|哪个|哪里|多少|告诉我|请问/gu,' ');
+  const words=extractKeywords(focus).filter(w=>!['chat','general','question','answer','preference','recall'].includes(w));
+  const terms=words.flatMap(w=>/^[\u4e00-\u9fff]+$/u.test(w)?[...textBigrams(w)]:[w]);
+  const facet=/(?:我(?:现在)?住(?:在)?(?:哪|哪里)|where do i live)/iu.test(queryText)?['住在','搬到','live in','moved to']:
+    /(?:我叫什么|我的名字|my name)/iu.test(queryText)?['我叫','名字','my name']:
+    /(?:我(?:现在)?(?:喜欢|不喜欢|爱喝|喝|不喝)(?:喝|吃)?什么|我的(?:口味|偏好)|my preferences)/iu.test(queryText)?['喜欢','爱喝','不喝','不吃','i like','i love']:[];
+  return [...new Set([...facet,...terms])].slice(0,16);
+}
+
 /**
  * Build the retrieval query from the full input contract (§VI).
  * The query is NOT the raw user input — it combines current input,
@@ -247,7 +263,7 @@ export function dedupeSupersedesChains(
   const byId = new Map(candidates.map((c) => [c.memoryId, c]));
   const supersededIds = new Set<string>();
   for (const c of candidates) {
-    if (c.supersedes && byId.has(c.supersedes)) {
+    if (c.status==="CONSOLIDATED" && c.supersedes && byId.has(c.supersedes)) {
       supersededIds.add(c.supersedes);
     }
   }
@@ -316,9 +332,13 @@ function explicitFact(content:string) {
 /** Unresolved independent contradictions are not both served as certain facts.
  * Legitimate corrections already pass through the supersedes/status path. */
 function excludeAmbiguousFacts(candidates:readonly ScoredCandidate[]):ScoredCandidate[] {
+  const confirmedSlots=new Set(candidates.filter(c=>c.status==='CONSOLIDATED').flatMap(c=>{const fact=explicitFact(c.content);return fact?[fact.slot]:[];}));
+  // VALIDATED is explicitly projected as unconfirmed. It cannot erase a
+  // consolidated fact or appear beside it as a competing owner assertion.
+  const eligible=candidates.filter(c=>{const fact=explicitFact(c.content);return !fact||c.status!=='VALIDATED'||!confirmedSlots.has(fact.slot);});
   const values=new Map<string,Set<string>>();
-  for(const c of candidates){const fact=explicitFact(c.content);if(!fact)continue;const seen=values.get(fact.slot)??new Set<string>();seen.add(fact.value.normalize('NFKC').toLocaleLowerCase('en').replace(/\s+/gu,''));values.set(fact.slot,seen);}
-  return candidates.filter(c=>{const fact=explicitFact(c.content);return !fact||(values.get(fact.slot)?.size??0)<=1;});
+  for(const c of eligible){if(c.status!=='CONSOLIDATED')continue;const fact=explicitFact(c.content);if(!fact)continue;const seen=values.get(fact.slot)??new Set<string>();seen.add(fact.value.normalize('NFKC').toLocaleLowerCase('en').replace(/\s+/gu,''));values.set(fact.slot,seen);}
+  return eligible.filter(c=>{const fact=explicitFact(c.content);return !fact||(values.get(fact.slot)?.size??0)<=1;});
 }
 
 const TYPE_PREFIX: Record<MemoryType, string> = {

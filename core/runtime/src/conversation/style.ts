@@ -83,7 +83,7 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
     ...(style.noQuestions?['用户明确不要提问：本轮不要追问或以问题结尾。']:[]),
     ...(style.noAdvice?['用户不需要建议：回应当下内容，不附带方法清单。']:[]),
     ...(style.acknowledgment?['这是简单招呼或回应：自然接一句即可，不重讲上一轮建议，不另起一个问题。']:[]),
-    ...(style.disclosure?['这是个人分享：接住这个内容即可，不自动科普、做计划或返回旧问题。']:[]),
+    ...(style.disclosure?['这是个人分享：只用简短陈述句接住这个内容，不追问住得是否习惯、原因或感受，不自动科普、做计划或返回旧问题。']:[]),
     ...(style.brief?['用户明确要求简短：优先一句直接回答；必要的事实边界仍保留。']:[]),
     ...(style.detailed?['用户明确需要详细内容：直接回答求助，不先安排用户休息。给足所需信息，结构按任务需要；区分量级与精确上界，不把近似复杂度说成精确次数。二分查找可用每轮减半解释O(log n)；最后候选仍可能需要比较，不能直接把ceil(log2 n)称为所有实现的最坏比较次数。没有说明具体实现和计数口径时只讲量级：不要给出ceil、⌈⌉等精确取整次数公式，也不要把轮数与元素比较次数混用。不能套用日常短回复。']:[]),
     ...(style.styleFeedback?['用户正在反馈表达太像 AI：简短承接，立刻自然地聊，不列改进清单、不承诺“我会调整我的风格”。']:[]),
@@ -109,7 +109,7 @@ export function dialogueStyleFailure(response:string,input:string):string|null {
   if(!writingTask&&/(?:像是|好像|难道|怎么|又).{0,12}(?:我该汇报|查岗|要我汇报)|(?:还要|又要)我.{0,8}(?:汇报|交代)/u.test(text))return 'dialogue: accountability taunt';
 
   if(!style.resumeTopic&&(style.topicShift||style.disclosure)&&/(?:不过|另外|但是|话说回来)[^。！？!?\n]{0,45}(?:刚才|之前|上次|还没[^。！？!?\n]{0,12}完|还悬着)|(?:先把|先回答)[^。！？!?\n]{0,30}(?:刚才|之前|旧问题)|回到(?:刚才|之前)(?:的)?(?:话题|问题)/u.test(text))return 'dialogue: abandoned topic hook';
-  if((style.quiet||style.noQuestions||style.disclosure||style.acknowledgment||style.styleFeedback||style.affectionateClosing||style.farewell)&&/[？?]|(?:要不要|愿不愿意|能不能)(?:再|和我|告诉|说|聊)|(?:对吧|是吧|好吗|行吗)[。！!\s]*$/u.test(text))return 'dialogue: unwanted question';
+  if((style.quiet||style.noQuestions||style.disclosure||style.acknowledgment||style.styleFeedback||style.affectionateClosing||style.farewell)&&/[？?]|(?:还习惯|还适应|还顺心)(?:吧|吗)[。！!～~\s]*$|(?:要不要|愿不愿意|能不能)(?:再|和我|告诉|说|聊)|(?:对吧|是吧|好吗|行吗)[。！!\s]*$/u.test(text))return 'dialogue: unwanted question';
   if(!style.detailed&&(style.casualShare||style.farewell||style.briefAffection)&&/^(?:作为(?:你的)?(?:AI|人工智能)|感谢(?:你)?(?:与我|向我)?分享|我(?:会|将)(?:继续)?(?:努力|调整我的|优化我的))/u.test(text.trim()))return 'dialogue: service-style preamble';
   if(!style.detailed&&style.farewell&&Array.from(response).length>100)return 'dialogue: farewell extended';
   if(!style.detailed&&(style.quiet||style.brief)&&Array.from(response).length>240)return 'dialogue: explicit brevity ignored';

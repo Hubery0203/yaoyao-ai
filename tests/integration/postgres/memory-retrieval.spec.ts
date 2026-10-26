@@ -340,4 +340,43 @@ describe.skipIf(!HAS_DOCKER)("MVP-002D: Memory Retrieval (PostgreSQL)", () => {
     const rows=await db.adminPool.query('SELECT status,times_recalled,version FROM memories WHERE user_id=$1',[owner.userId]);expect(rows.rows).toHaveLength(2);for(const row of rows.rows)expect(row).toMatchObject({status:'CONSOLIDATED',times_recalled:'0',version:1});
   });
 
+  it('query-relevant older facts are not hidden behind fifty unrelated important rows',async()=>{
+    const owner=await setupUser(db),target=newMemoryId()as string;
+    await insertMemories(db,owner,[
+      ...Array.from({length:65},(_,i):TestMemory=>({memoryId:newMemoryId()as string,content:'用户陈述：我喜欢历史书编号'+i,type:'SEMANTIC',importance:'0.99',confidence:'0.9',status:'CONSOLIDATED'})),
+      {memoryId:target,content:'用户陈述：我喜欢白桃焙茶。',type:'SEMANTIC',importance:'0.1',confidence:'0.9',status:'CONSOLIDATED'},
+    ]);
+    const result=await new PostgresMemoryRetrievalAdapter(db.appPool).retrieve(retrievalInput(owner,'你还记得白桃焙茶吗？'));
+    expect(result.memories.map(m=>m.memoryId)).toContain(target);
+    expect(result.telemetry.candidateCount).toBe(50);
+  });
+  it('broad location recall finds its facet even with a one-row pool',async()=>{
+    const owner=await setupUser(db),target=newMemoryId()as string;
+    await insertMemories(db,owner,[
+      {memoryId:newMemoryId()as string,content:'用户陈述：我喜欢咖啡。',type:'SEMANTIC',importance:'0.99',confidence:'0.9',status:'CONSOLIDATED'},
+      {memoryId:target,content:'用户陈述：我住在大阪。',type:'SEMANTIC',importance:'0.1',confidence:'0.9',status:'CONSOLIDATED'},
+    ]);
+    const result=await new PostgresMemoryRetrievalAdapter(db.appPool,{maxCandidates:1}).retrieve(retrievalInput(owner,'我住哪里？'));
+    expect(result.memories.map(m=>m.memoryId)).toEqual([target]);
+  });
+  it('literal query preselection keeps owner scope and handles an empty term list',async()=>{
+    const a=await setupUser(db),b=await setupUser(db),other=newMemoryId()as string;
+    await insertMemories(db,b,[{memoryId:other,content:'用户陈述：我喜欢白桃焙茶。',type:'SEMANTIC',importance:'1',confidence:'1',status:'CONSOLIDATED'}]);
+    const adapter=new PostgresMemoryRetrievalAdapter(db.appPool);
+    for(const query of ["白桃焙茶 % _ ' OR 1=1 --",' % _ ']){
+      const result=await adapter.retrieve(retrievalInput(a,query));
+      expect(result.memories).toEqual([]);expect(result.telemetry.candidateCount).toBe(0);
+    }
+  });
+
+  it('confirmed query matches win a bounded pool over an unconfirmed same-facet change',async()=>{
+    const owner=await setupUser(db),target=newMemoryId()as string;
+    await insertMemories(db,owner,[
+      {memoryId:newMemoryId()as string,content:'用户陈述：我住在东京。',type:'SEMANTIC',importance:'1',confidence:'1',status:'VALIDATED'},
+      {memoryId:target,content:'用户陈述：我住在大阪。',type:'SEMANTIC',importance:'0.1',confidence:'0.9',status:'CONSOLIDATED'},
+    ]);
+    const result=await new PostgresMemoryRetrievalAdapter(db.appPool,{maxCandidates:1}).retrieve(retrievalInput(owner,'我住哪里？'));
+    expect(result.memories.map(m=>m.memoryId)).toEqual([target]);
+  });
+
 });

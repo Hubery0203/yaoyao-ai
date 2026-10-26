@@ -2,7 +2,7 @@ import {naturalnessFailure} from '../conversation/naturalness.js';
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse,isDirectNatureQuestion} from '../conversation/style.js';
 import {experienceResponseFailure,groundedLifeReply} from '../conversation/experience.js';
-import {hasContradictedUserFact,hasUnsupportedPlanOutcome} from '../conversation/memory-context.js';
+import {hasContradictedUserFact,hasUnsupportedPlanOutcome,hasUnsupportedResidenceRecall,residenceRecallUnknown,groundedCorrectionAcknowledgement} from '../conversation/memory-context.js';
 /**
  * Response Validation — MVP-002F.
  *
@@ -282,6 +282,7 @@ function checkContinuity(
   if(naturalFailure)return {ok:false,reason:naturalFailure};
   const styleFailure=dialogueStyleFailure(responseText,userInput);
   if(styleFailure)return {ok:false,reason:styleFailure};
+  if(hasUnsupportedResidenceRecall(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: ungrounded residence recall'};
   if(hasContradictedUserFact(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: contradicted latest user fact'};
   if(hasUnsupportedPlanOutcome(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: unsupported plan outcome'};
   // No verbatim echo of the user input.
@@ -335,6 +336,7 @@ export function buildFallbackResponse(input: {
 }): string {
   const { decision } = input;
   const grounded=groundedLifeReply(input.experience,input.userInput);if(grounded)return grounded;
+  if(residenceRecallUnknown(input.userInput,input.recentConversation??[]))return '我还不确定你现在住哪里。';
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
   if(style.farewell)return '好，回头聊～';
@@ -345,7 +347,7 @@ export function buildFallbackResponse(input: {
   // A literal temporary restriction is user evidence, not a new durable fact.
   if(/^我(?:今天|今晚|这次|暂时)(?:不喝|不想喝)[^，,。！？!?]{1,80}[。！!]?$/u.test(input.userInput.trim()))return '好，那就先不喝。';
   if(/^我(?:今天|今晚|这次|暂时)(?:不吃|不想吃)[^，,。！？!?]{1,80}[。！!]?$/u.test(input.userInput.trim()))return '好，这次就先不吃。';
-  if(style.disclosure)return '好呀。';
+  if(style.disclosure)return groundedCorrectionAcknowledgement(input.userInput)??'好呀。';
   if(hasUnsupportedPlanOutcome('还没有。',input.userInput,input.recentConversation??[]))return '你之前提过这个计划，没说是否已经去过。';
   if(input.experience&&style.casualShare)return '好呀。';
   switch (decision.primaryIntent) {
@@ -376,9 +378,11 @@ export function buildRepairInstruction(
     ...(reason.startsWith('experience:')?['Follow the account preference unless the current explicit request overrides it. For ordinary sharing, write one direct declarative message. Use no question marks, confirmation questions, A-or-B alternatives, or advice. Do not ask about the flower type, occasion, motive or mood. Do not make a request for the user to rephrase an ordinary share. Reserved tone uses no pet names. All recent-life records belong to the USER, never to YaoYao. A planned event has no known completion outcome: neither happened nor not-yet-happened is established. State only the source boundary briefly.']:[]),
     ...(reason.includes('revoked suggestion')?['The user explicitly rejected that suggestion. Do not offer it again or infer a lasting preference. Respond to their current content.']:[]),
     ...(reason.includes('burst echo')?['The input combines short messages from one burst. Respond to the latest development rather than echoing the whole input.']:[]),
+    ...(reason.includes('unwanted question')?['Use a direct statement only. Do not replace a question mark with a confirmation probe ending 吧, such as 住得还顺心吧. Do not ask how they are adapting.']:[]),
     ...(reason.startsWith('dialogue:')?['Respect the current style request. Reply briefly and naturally; omit unwanted questions and abandoned-topic hooks. Do not turn the repair into an apology or a list of promises.']:[]),
     ...(reason.includes('contradicted latest user fact')?['Use the latest literal user statement for this object. Do not repeat the superseded assertion or invent a substitute preference. Today-only restrictions remain temporary.']:[]),
-    ...(reason.includes('unsupported plan outcome')?['Only a plan is recorded. Do not assert that it happened or that it definitely has not happened. State only that the user mentioned a plan and has not told you about completion.']:[]),
+    ...(reason.includes('ungrounded residence recall')?['Do not infer residence from the account timezone or invent a city. The available user evidence does not establish residence. Briefly state uncertainty about the available evidence; never claim that the user never told you or has not mentioned it.']:[]),
+    ...(reason.includes('unsupported plan outcome')?['Only a plan is recorded. Do not assert that it happened or that it definitely has not happened. Do not begin with 没有/还没有/没去过 or assert 没成行. State the available source boundary in one sentence, such as 你提过这个计划，是否成行还不清楚。 Do not claim the user has never told you a result elsewhere.']:[]),
     `Fix the specific failure above. Output the full 5-field contract JSON again.`,
   ].join("\n");
 }

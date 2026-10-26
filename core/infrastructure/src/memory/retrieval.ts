@@ -39,6 +39,7 @@ import { memories, schema } from "../postgres/schema/index.js";
 import { numericToNumber } from "../postgres/mappers/primitives.js";
 import {
   buildQueryText,
+  memorySearchTerms,
   DEFAULT_RANKING_WEIGHTS,
   projectSummary,
   rankAndSelect,
@@ -110,6 +111,11 @@ export class PostgresMemoryRetrievalAdapter implements MemoryRetrieval {
       ]);
       const db = drizzle(client, { schema });
 
+      // Literal query matches compete before LIMIT, so an older relevant row
+      // is not hidden behind fifty unrelated high-importance memories.
+      const terms=memorySearchTerms(queryText);
+      const matches=sql.join(terms.map(term=>sql`CASE WHEN strpos(lower(${memories.content}), ${term}) > 0 THEN 1 ELSE 0 END`),sql` + `);
+      const relevanceOrder=terms.length?sql`CASE WHEN (${matches}) > 0 THEN CASE WHEN ${memories.status} = 'CONSOLIDATED' THEN 2 ELSE 1 END ELSE 0 END`:sql`0`;
       const rows = await db
         .select({
           memoryId: memories.memoryId,
@@ -131,7 +137,7 @@ export class PostgresMemoryRetrievalAdapter implements MemoryRetrieval {
             inArray(memories.status, [...RETRIEVABLE_STATUSES]),
           ),
         )
-        .orderBy(desc(memories.importance), desc(memories.updatedAt))
+        .orderBy(...(terms.length?[desc(relevanceOrder)]:[]),desc(memories.importance),desc(memories.updatedAt),memories.memoryId)
         .limit(input.limit > 0 ? Math.min(input.limit, this.maxCandidates) : this.maxCandidates);
       const retrievalLatencyMs = Date.now() - started;
 

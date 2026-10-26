@@ -24,13 +24,24 @@ for(const f of dataset.cases.slice(0,maxTurns)){
  const events={findCompletedTurn:async x=>messages.find(m=>m.role==='assistant'&&m.requestId===x.requestId)?.text??null,persistUserMessage:async x=>{const dup=messages.some(m=>m.role==='user'&&m.requestId===x.requestId);if(!dup)messages.push({role:'user',...x,occurredAt:now,sequence:messages.length+1});return{eventId:'user',duplicate:dup};},persistAssistantMessage:async x=>{messages.push({role:'assistant',...x,occurredAt:now,sequence:messages.length+1});return{eventId:'assistant',response:x.text};},loadHistory:async x=>messages.filter(m=>m.requestId!==x.excludeRequestId).slice(-x.limit)};
  const lifeEvents=f.life?[{...f.life,id:'synthetic',scheduledDay:new Date(now.getTime()+86400000).toISOString().slice(0,10),declaredAt:now,expiresAt:new Date(now.getTime()+4*86400000),version:1,sourceSequence:1}]:[];
  const contextData={loadPersonaData:async userId=>({yaoyao:{yaoyaoId:'synthetic-companion',userId},relationship:{type:'deep_partner',status:'active',terminationAllowed:false,metrics:{intimacy:.8}},state:{emotion:EmotionVector.initial().with({affection:.85,hurt:0,anger:0}),energy:.7,socialState:'calm',relationshipState:'harmonious',attention:'present',stateVersion:1},recentEvents:[],experience:{preferences:{...DEFAULT_PREFERENCES,...f.preferences},lifeEvents}})};
- const core=new ConversationOrchestrator({router:new AIRouter({l1:provider,l2:provider,l3:provider,fallback:provider}),contextData,conversationEvents:events});
+ // Optional synthetic long-term records exercise the real ranker/projection.
+ // SQL candidate selection/isolation is verified separately against PostgreSQL.
+ let memoryRetrieval;
+ if(f.memories){
+  if(!Array.isArray(f.memories)||f.memories.length>50)throw Error('Memory fixture must be bounded to 50 rows');
+  const {rankAndSelect,projectSummary,buildQueryText,DEFAULT_RANKING_WEIGHTS:weights}=await import('../core/infrastructure/dist/memory/ranking.js');
+  const candidates=f.memories.map((m,i)=>({memoryId:m.id??'synthetic-memory-'+i,content:m.content,type:m.type??'SEMANTIC',importance:m.importance??.8,confidence:m.confidence??.9,status:m.status??'CONSOLIDATED',version:m.version??1,supersedes:m.supersedes??null,createdAt:now,updatedAt:now,semanticScore:null}));
+  memoryRetrieval={retrieve:async request=>{const selected=rankAndSelect(candidates,buildQueryText(request),weights,now,5);return{memories:selected.map(m=>({memoryId:m.memoryId,summary:projectSummary(m,weights,200),importance:m.importance,confidence:m.confidence,type:m.type,signals:m.signals,score:m.score})),telemetry:{requestId:request.traceId,candidateCount:candidates.length,selectedCount:selected.length,retrievalLatencyMs:0,rankingLatencyMs:0,semanticUsed:false}};}};
+ }
+ const core=new ConversationOrchestrator({router:new AIRouter({l1:provider,l2:provider,l3:provider,fallback:provider}),contextData,conversationEvents:events,memoryRetrieval});
  const input={userId:'synthetic',requestId:f.id,traceId:f.id,text:f.input};
  try{
   const result=await core.converse(input),after=calls,replay=await core.converse(input),quality=summarizeTurnQuality(result.trace),performance=summarizeTurnPerformance(result.trace);
+  const {groundedCorrectionAcknowledgement}=await import('../core/runtime/dist/conversation/memory-context.js');
+  const acceptedGroundedFallback=quality.groundedCorrectionAcknowledgment===true&&!quality.providerFallback&&result.response===groundedCorrectionAcknowledgement(f.input);
   const checks={replay:replay.response===result.response&&calls===after,noForbidden:(f.reject??[]).every(r=>!new RegExp(r,'iu').test(result.response)),requiredHints:(f.includes??[]).every(s=>result.response.includes(s))&&(f.anyOf??[]).every(group=>group.some(s=>result.response.includes(s))),length:!f.maxChars||result.response.length<=f.maxChars,repairObserved:mode!=='mock'||!f.forceRepair||quality.repairAttempts===1,noFallback:!quality.validationFallback&&!quality.providerFallback};
-  report.turns.push({id:f.id,input:f.input,preferences:f.preferences??{},response:result.response,rubric:f.rubric,checks,quality,performance,modelCalls:calls-before,rawAttempts});
+  report.turns.push({id:f.id,input:f.input,preferences:f.preferences??{},response:result.response,rubric:f.rubric,checks,quality,...(acceptedGroundedFallback?{acceptedGroundedFallback:true}:{}),performance,modelCalls:calls-before,rawAttempts});
  }catch(e){report.turns.push({id:f.id,input:f.input,error:e.code??e.name,modelCalls:calls-before,rawAttempts});}
 }
-report.summary={turns:report.turns.length,calls,errors:report.turns.filter(t=>t.error).length,ruleFailures:report.turns.filter(t=>t.checks&&Object.values(t.checks).some(v=>!v)).map(t=>t.id),humanToneVerdict:'pending'};
+report.summary={turns:report.turns.length,calls,errors:report.turns.filter(t=>t.error).length,ruleFailures:report.turns.filter(t=>t.checks&&Object.entries(t.checks).some(([key,value])=>!value&&!(key==='noFallback'&&t.acceptedGroundedFallback===true))).map(t=>t.id),humanToneVerdict:'pending'};
 await writeFile(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({...report.summary,mode,out}));if(report.summary.errors||report.summary.ruleFailures.length)process.exitCode=1;
