@@ -7,3 +7,10 @@ export function photoRequest(text:string):string|null {
 }
 export const PHOTO_CAPTION='[AI生成图片]';
 export const PHOTO_FAILURE='这张没生成好，先不自动重试了。';
+export const PHOTO_FAILURE_CODES=['PHOTO_CREDIT_EXHAUSTED','PHOTO_RATE_LIMITED','PHOTO_AUTH_FAILED','PHOTO_REJECTED','PHOTO_RESULT_UNKNOWN','PHOTO_PROVIDER_FAILED'] as const;
+export type PhotoFailureCode=typeof PHOTO_FAILURE_CODES[number];
+export function photoFailureMessage(code:PhotoFailureCode):string{
+ const messages:Record<PhotoFailureCode,string>={PHOTO_CREDIT_EXHAUSTED:'图片服务余额不足，补充后再发新请求；这条不会自动重试。',PHOTO_RATE_LIMITED:'图片服务暂时限流，这条不会自动重试，稍后再发新请求。',PHOTO_AUTH_FAILED:'图片服务授权不可用，需先检查配置；这条不会自动重试。',PHOTO_REJECTED:'这张没能生成，请换个日常场景；这条不会自动重试。',PHOTO_RESULT_UNKNOWN:PHOTO_FAILURE,PHOTO_PROVIDER_FAILED:PHOTO_FAILURE};return messages[code];
+}
+export function photoControl(text:string):'status'|'help'|null{return text.trim()==='照片状态'?'status':text.trim()==='照片帮助'?'help':null;}
+export const PHOTO_HELP='发送“发张自拍给我”或“照片：穿毛衣在窗边微笑”。\n使用你的参考形象生成AI图片，不是现实拍摄。\n“照片状态”查看尝试额度和最近任务；“跳过照片”跳过未完成任务。\n失败或结果不明也占尝试额度，不自动重新生成；接口接受不等于手机已收到。';

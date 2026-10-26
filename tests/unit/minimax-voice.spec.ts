@@ -1,0 +1,44 @@
+import {describe,it,expect,vi} from 'vitest';
+import {execFileSync} from 'node:child_process';
+import {MiniMaxSpeechProvider,OpenAISpeechProvider,MINIMAX_SYSTEM_VOICES,loadConfig,type MiniMaxVoiceRegion,type MiniMaxSpeechModel} from '@yaoyao/infrastructure';
+import {voiceCommand,VOICE_LABELS,VOICE_HELP,voiceTextEligible,type VoiceName} from '@yaoyao/application';
+import {voiceConfigured,createVoiceDependencies} from '../../apps/api/src/voice-delivery.js';
+const audio=Buffer.concat([Buffer.from('fffb9000','hex'),Buffer.alloc(128)]);
+const good=()=>new Response(JSON.stringify({base_resp:{status_code:0},data:{status:2,audio:audio.toString('hex')},extra_info:{audio_format:'mp3'}}));
+describe('MiniMax official voice adapter',()=>{
+ it.each([['cn','https://api.minimax.cn/v1/t2a_v2'],['international','https://api.minimax.io/v1/t2a_v2']] as const)('pins %s account origin and decodes inline MP3 hex without another fetch',async(region,url)=>{
+  const fetcher=vi.fn().mockResolvedValue(good());expect(await new MiniMaxSpeechProvider('test-minimax-key',region,'speech-2.8-hd',fetcher).generate('好呀，晚安宝贝～','coral')).toEqual(audio);
+  const [target,options]=fetcher.mock.calls[0],body=JSON.parse(options.body);expect(target).toBe(url);expect(options.redirect).toBe('error');expect(body).toMatchObject({model:'speech-2.8-hd',text:'好呀，晚安宝贝～',stream:false,output_format:'hex',language_boost:'Chinese',voice_setting:{voice_id:'Chinese (Mandarin)_Warm_Bestie'},audio_setting:{format:'mp3',sample_rate:32000,channel:1}});expect(body.references).toBeUndefined();expect(body.history).toBeUndefined();expect(fetcher).toHaveBeenCalledTimes(1);
+ });
+ it.each([[1008,'VOICE_CREDIT_EXHAUSTED'],[2053,'VOICE_CREDIT_EXHAUSTED'],[1004,'VOICE_AUTH_FAILED'],[2049,'VOICE_AUTH_FAILED'],[1002,'VOICE_RATE_LIMITED'],[1045,'VOICE_RATE_LIMITED'],[1001,'VOICE_RESULT_UNKNOWN'],[20132,'VOICE_PROVIDER_FAILED']])('HTTP200 business failure %s is not mistaken for audio success',async(code,expected)=>{
+  const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({base_resp:{status_code:code,status_msg:'SECRET PROVIDER DIAGNOSTIC'},data:{audio:audio.toString('hex'),status:2}})));await expect(new MiniMaxSpeechProvider('secret','cn','speech-2.8-hd',fetcher).generate('抱抱','coral')).rejects.toThrow(String(expected));expect(fetcher).toHaveBeenCalledTimes(1);
+ });
+ it.each([[401,'VOICE_AUTH_FAILED'],[403,'VOICE_AUTH_FAILED'],[429,'VOICE_RATE_LIMITED'],[500,'VOICE_PROVIDER_FAILED']])('classifies bounded non-JSON HTTP %s without leaking body',async(status,expected)=>{const f=vi.fn().mockResolvedValue(new Response('SECRET'.repeat(5000),{status:Number(status)}));await expect(new MiniMaxSpeechProvider('secret','cn','speech-2.8-hd',f).generate('抱抱','coral')).rejects.toThrow(String(expected));expect(f).toHaveBeenCalledTimes(1);});
+ it.each(['https://evil.test/audio.mp3','ff','abc','ZZZZZZZZ'])('rejects URL, malformed, odd or invalid audio payload: %s',async hex=>{const f=vi.fn().mockResolvedValue(new Response(JSON.stringify({base_resp:{status_code:0},data:{status:2,audio:hex}})));await expect(new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',f).generate('抱抱','coral')).rejects.toThrow('VOICE_RESULT_UNKNOWN');expect(f).toHaveBeenCalledTimes(1);});
+ it('rejects missing success envelope, partial status and non-MP3 result without retry',async()=>{for(const body of [{data:{status:2,audio:audio.toString('hex')}},{base_resp:{status_code:0},data:{status:1,audio:audio.toString('hex')}},{base_resp:{status_code:0},data:{status:2,audio:audio.toString('hex')},extra_info:{audio_format:'wav'}}]){const f=vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));await expect(new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',f).generate('抱抱','coral')).rejects.toThrow('VOICE_RESULT_UNKNOWN');expect(f).toHaveBeenCalledTimes(1);}});
+ it('bounds hex response before decoding; transport failure stays unknown',async()=>{const huge=vi.fn().mockResolvedValue(new Response('x'.repeat(2*2*1024*1024+65537)));await expect(new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',huge).generate('抱抱','coral')).rejects.toThrow('VOICE_RESULT_UNKNOWN');const down=vi.fn().mockRejectedValue(Error('private network diagnostic'));await expect(new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',down).generate('抱抱','coral')).rejects.toThrow('VOICE_RESULT_UNKNOWN');expect(down).toHaveBeenCalledTimes(1);});
+ it('invalid region, voice/model or long text cannot make a request',async()=>{const f=vi.fn();for(const p of [new MiniMaxSpeechProvider('key','evil' as MiniMaxVoiceRegion,'speech-2.8-hd',f),new MiniMaxSpeechProvider('key','cn','evil' as MiniMaxSpeechModel,f)])await expect(p.generate('抱抱','coral')).rejects.toThrow();const p=new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',f);await expect(p.generate('抱抱','arbitrary-cloned-voice' as VoiceName)).rejects.toThrow();await expect(p.generate('x'.repeat(241),'coral')).rejects.toThrow();expect(f).not.toHaveBeenCalled();});
+});
+describe('MiniMax selection, labels and private credentials',()=>{
+ it('only MiniMax credentials plus explicit region configure the active factory',()=>{
+  const env={VOICE_ENABLED:'1',OPENAI_VOICE_API_KEY:'openai-must-not-be-used',VOICE_STORAGE_DIR:'/private/voice'},c=loadConfig(env);expect(voiceConfigured(c)).toBe(false);
+  expect(voiceConfigured(loadConfig({...env,MINIMAX_VOICE_API_KEY:'mm-key'}))).toBe(false);
+  expect(voiceConfigured(loadConfig({...env,MINIMAX_VOICE_API_KEY:'mm-key',MINIMAX_VOICE_REGION:'cn'}))).toBe(true);
+  expect(()=>loadConfig({MINIMAX_VOICE_REGION:'https://evil.test'})).toThrow();
+ });
+ it('factory never falls back to OpenAI when MiniMax is missing',()=>{const config=loadConfig({VOICE_ENABLED:'1',OPENAI_VOICE_API_KEY:'openai-key',VOICE_STORAGE_DIR:'/private/voice'});expect(createVoiceDependencies(config,{} as never,{} as never,new AbortController().signal)).toBeUndefined();});
+ it('Chinese stock voice labels map to immutable stored profiles, not arbitrary voice IDs',()=>{
+  expect(voiceCommand('语音声音 温暖闺蜜')).toEqual({kind:'voice',voice:'coral'});expect(voiceCommand('语音声音 温柔学姐')).toEqual({kind:'voice',voice:'marin'});expect(voiceCommand('语音声音 柔和少女')).toEqual({kind:'voice',voice:'shimmer'});expect(voiceCommand('语音声音 __proto__')).toBeNull();expect(VOICE_LABELS.marin).toBe('温柔学姐');expect(MINIMAX_SYSTEM_VOICES.marin).toBe('Chinese (Mandarin)_Gentle_Senior');expect(VOICE_HELP).toContain('MiniMax');expect(VOICE_HELP).not.toContain('OpenAI');
+ });
+ it('provider pause/interjection tags stay text and cannot spend synthesis',async()=>{const f=vi.fn(),p=new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',f);for(const text of ['<#99.99#>','(groans)','(laughs)']){expect(voiceTextEligible(text)).toBe(false);await expect(p.generate(text,'coral')).rejects.toThrow();}expect(f).not.toHaveBeenCalled();});
+ it('redacts MiniMax key in root and nested structured log fields',()=>{const logger=new URL('../../core/infrastructure/dist/observability/logger.js',import.meta.url).href;const output=execFileSync(process.execPath,['--input-type=module','-e',`import {createLogger} from ${JSON.stringify(logger)};createLogger({NODE_ENV:'test',LOG_LEVEL:'info'}).info({MINIMAX_VOICE_API_KEY:'synthetic-mm-secret',nested:{MINIMAX_VOICE_API_KEY:'synthetic-nested-secret'}},'safe');`],{encoding:'utf8'});expect(output).not.toContain('synthetic-mm-secret');expect(output).not.toContain('synthetic-nested-secret');expect(output).toContain('[REDACTED]');});
+});
+
+describe('requested additional MiniMax stock voices',()=>{
+ it.each([['妩媚御姐','wumei','wumei_yujie'],['嗲嗲学妹','diadia','diadia_xuemei']] as const)('maps %s to its account-listed stock ID',async(label,profile,id)=>{
+  expect(voiceCommand('语音声音 '+label)).toEqual({kind:'voice',voice:profile});expect(VOICE_LABELS[profile]).toBe(label);expect(VOICE_HELP).toContain(label);
+  const f=vi.fn().mockResolvedValue(good());expect(await new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',f).generate('好呀，晚安宝贝～',profile)).toEqual(audio);expect(JSON.parse(f.mock.calls[0][1].body).voice_setting.voice_id).toBe(id);expect(f).toHaveBeenCalledTimes(1);
+ });
+});
+
+it('MiniMax-only profiles cannot accidentally call the dormant OpenAI adapter',async()=>{const f=vi.fn(),p=new OpenAISpeechProvider('unused-key',f);for(const voice of ['wumei','diadia'] as const)await expect(p.generate('抱抱',voice)).rejects.toThrow();expect(f).not.toHaveBeenCalled();});

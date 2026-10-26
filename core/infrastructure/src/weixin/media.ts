@@ -6,7 +6,7 @@ export function validWeixinImage(v:unknown):v is WeixinImage{
  return typeof m.encryptQueryParam==='string'&&m.encryptQueryParam.length>0&&m.encryptQueryParam.length<=16384&&typeof m.aesKey==='string'&&/^[a-f0-9]{32}$/.test(m.aesKey)&&Number.isInteger(m.ciphertextSize)&&m.ciphertextSize>0&&m.ciphertextSize<=PHOTO_MAX_BYTES+16;
 }
 export function trustedCdnUpload(value:string):string{
- const u=new URL(value);if(u.protocol!=='https:'||u.hostname!=='novac2c.cdn.weixin.qq.com'||u.port||u.username||u.password||u.hash||u.pathname!=='/c2c/upload')throw Error('UNTRUSTED_PHOTO_CDN');return u.href;
+ const u=new URL(value);if(u.protocol!=='https:'||!['novac2c.cdn.weixin.qq.com','novac2c.cdn.wechat.com'].includes(u.hostname)||u.port||u.username||u.password||u.hash||u.pathname!=='/c2c/upload')throw Error('UNTRUSTED_PHOTO_CDN');return u.href;
 }
 /** Protocol reference: Tencent/openclaw-weixin media upload/send. Keys never appear in logs. */
 export async function uploadWeixinImage(client:{post(path:string,body:object,timeout?:number):Promise<Record<string,unknown>>;credentials:{ownerId:string}},bytes:Buffer,fetcher:typeof fetch=fetch,signal?:AbortSignal):Promise<WeixinImage>{
