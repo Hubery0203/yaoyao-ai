@@ -21,6 +21,7 @@ async function fixture(fn){
  }finally{await rm(root,{recursive:true,force:true});}
 }
 test('local protocol double publishes ciphertext, re-downloads and authenticates; strict SSH argv',()=>fixture(async f=>{
+ assert.deepEqual(f.calls[0].argv.slice(0,2),['-F','/dev/null']);assert.ok(f.calls[0].argv.includes('GlobalKnownHostsFile=/dev/null'));assert.ok(f.calls[0].argv.includes('IdentityAgent=none'));
  const r=await publishBackup(f);assert.equal(r.authenticated,true);assert.equal(r.manifestVerified,true);assert.equal(r.keyEscrowVerified,false);assert.equal(r.liveDatabaseTouched,false);
  assert.deepEqual(await readFile(join(f.root,'remote',f.name)),await readFile(f.archive));assert.equal((await stat(join(f.root,'remote',f.name))).mode&0o077,0);
  const c=f.calls[0];assert.equal(c.exe,'/usr/bin/ssh');for(const flag of ['StrictHostKeyChecking=yes','IdentitiesOnly=yes','ProxyCommand=none','ControlPath=none'])assert.ok(c.argv.includes(flag));assert.ok(!c.argv.join(' ').includes('SYNTHETIC LOCAL TEST KEY'));

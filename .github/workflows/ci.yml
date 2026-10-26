@@ -37,7 +37,7 @@ jobs:
       - run: npm run test:contract
       - run: npm run test:web
       - run: node --test tools/weixin-w1/probe.test.mjs
-      - run: node --test tools/backup/backup.test.mjs tools/backup/offsite.test.mjs tools/backup/snapshot.test.mjs
+      - run: node --test tools/backup/backup.test.mjs tools/backup/offsite.test.mjs tools/backup/snapshot.test.mjs tools/backup/evidence.test.mjs
       - run: node scripts/evaluate-quality.mjs --mode mock --out quality-report.json
       - run: node scripts/evaluate-experience.mjs --mode mock --out experience-report.json
       - run: node scripts/evaluate-experience.mjs --mode mock --fixtures tests/fixtures/experience-009.json --max-calls 30 --out experience-009-report.json
