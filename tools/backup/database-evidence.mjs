@@ -15,7 +15,7 @@ export async function databaseEvidence(query){
  const grants=await query(`SELECT coalesce(json_agg(x ORDER BY table_name COLLATE "C",grantee COLLATE "C",privilege_type COLLATE "C"),'[]'::json) FROM (SELECT table_name,grantee,privilege_type,is_grantable FROM information_schema.table_privileges WHERE table_schema='public')x`);
  const extensions=await query(`SELECT coalesce(json_agg(x ORDER BY name COLLATE "C"),'[]'::json) FROM (SELECT extname name,extversion version FROM pg_extension)x`);
  const sequenceDefinitions=await query(`SELECT coalesce(json_agg(x ORDER BY name COLLATE "C"),'[]'::json) FROM (SELECT sequencename name,sequenceowner owner,data_type,start_value::text,min_value::text,max_value::text,increment_by::text,cycle,cache_size::text FROM pg_sequences WHERE schemaname='public')x`);
- const metadata={tables,columns,policies,constraints,indexes,grants,extensions,sequenceDefinitions};return {version:1,algorithm:'sha256-sorted-jsonb-row-hashes-v1',tableCount:tables.length,rows:contents.reduce((n,t)=>n+Number(t.rows),0),contents,metadataFingerprint:fingerprint(metadata),contentFingerprint:fingerprint(contents)};
+ const metadata={tables,columns,policies,constraints,indexes,grants,extensions,sequenceDefinitions};return {extensionVersions:extensions,version:1,algorithm:'sha256-sorted-jsonb-row-hashes-v1',tableCount:tables.length,rows:contents.reduce((n,t)=>n+Number(t.rows),0),contents,metadataFingerprint:fingerprint(metadata),contentFingerprint:fingerprint(contents)};
 }
 export function compareEvidence(expected,actual){
  if(!expected||expected.version!==1||expected.algorithm!=='sha256-sorted-jsonb-row-hashes-v1'||!/^[a-f0-9]{64}$/.test(expected.contentFingerprint??'')||!/^[a-f0-9]{64}$/.test(expected.metadataFingerprint??''))throw Error('INVALID_SOURCE_EVIDENCE');
@@ -28,4 +28,10 @@ export async function validateSequenceFloors(query){
   const state=await query(`SELECT json_build_object('last',last_value::text,'called',is_called) FROM public."${s.sequence_name}"`),max=await query(`SELECT to_json(max("${s.column_name}")::text) FROM public."${s.table_name}"`);
   if(max!==null){const next=BigInt(state.last)+(state.called?BigInt(s.increment):0n);if(next<=BigInt(max))throw Error('RESTORED_SEQUENCE_BEHIND_DATA');}
  }return {safe:true,sequences:owned.length};
+}
+
+export function extensionBootstrap(versions){
+ if(versions===undefined)return [];
+ if(!Array.isArray(versions)||versions.length>30)throw Error('INVALID_EXTENSION_VERSIONS');const names=new Set();
+ return versions.map(v=>{if(!v||typeof v.name!=='string'||!/^[a-z_][a-z0-9_]*$/.test(v.name)||typeof v.version!=='string'||!/^[0-9][a-zA-Z0-9_.-]{0,31}$/.test(v.version)||names.has(v.name))throw Error('INVALID_EXTENSION_VERSIONS');names.add(v.name);return `CREATE EXTENSION IF NOT EXISTS "${v.name}" VERSION '${v.version}';`;});
 }

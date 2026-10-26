@@ -6,7 +6,7 @@ import {join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {readPrivateJson,privateParent} from './offsite.mjs';
 import {restoreBackup} from './archive.mjs';
-import {databaseEvidence,compareEvidence,validateSequenceFloors} from './database-evidence.mjs';
+import {databaseEvidence,compareEvidence,validateSequenceFloors,extensionBootstrap} from './database-evidence.mjs';
 import {privateRead,hashFile} from './offsite.mjs';
 export async function restoreDrill(c){
  if(typeof c.pgBin!=='string'||!c.pgBin.startsWith('/')||typeof c.workspace!=='string')throw Error('EXPLICIT_DRILL_CONFIG_REQUIRED');
@@ -22,12 +22,13 @@ export async function restoreDrill(c){
   const sql=q=>invoke('psql',[...connection,'-d','yaoyao_drill','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-c',q]);
   invoke('createdb',[...connection,'yaoyao_drill']);
   sql('CREATE ROLE postgres NOLOGIN; CREATE ROLE yaoyao_admin NOLOGIN; CREATE ROLE yaoyao_migrate NOLOGIN; CREATE ROLE yaoyao_app NOLOGIN; CREATE ROLE yaoyao_readonly NOLOGIN; CREATE ROLE yaoyao_breakglass NOLOGIN;');
+  const source=JSON.parse(await readFile(join(out,'release.json'),'utf8')).backupEvidence;
+  for(const statement of extensionBootstrap(source?.extensionVersions??c.expectedExtensionVersions))sql(statement);
   invoke('pg_restore',[...connection,'--dbname=yaoyao_drill','--exit-on-error',join(out,'database.dump')]);
   sql("SET timezone='UTC'; SET datestyle='ISO,YMD'; SET extra_float_digits=3; SET bytea_output='hex';");
   // psql invocations are separate sessions, so pin formatting on every evidence query.
   const evidenceQuery=q=>JSON.parse(sql("SET timezone='UTC'; SET datestyle='ISO,YMD'; SET extra_float_digits=3; SET bytea_output='hex'; SELECT coalesce(("+q+")::text,'null')"));
   const sequenceCheck=await validateSequenceFloors(evidenceQuery);
-  const source=JSON.parse(await readFile(join(out,'release.json'),'utf8')).backupEvidence;
   let contentCompared=false;
   if(c.requireContentEvidence===true&&!source)throw Error('SOURCE_CONTENT_EVIDENCE_REQUIRED');
   if(source){const {f,s}=await privateRead(join(out,'database.dump'),48*1024*1024);try{if(await hashFile(f,s.size)!==source.dumpSHA256)throw Error('DUMP_EVIDENCE_MISMATCH');}finally{await f.close();}compareEvidence(source,await databaseEvidence(evidenceQuery));contentCompared=true;}
