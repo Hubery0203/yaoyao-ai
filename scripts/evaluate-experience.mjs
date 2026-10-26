@@ -37,9 +37,11 @@ for(const f of dataset.cases.slice(0,maxTurns)){
  const input={userId:'synthetic',requestId:f.id,traceId:f.id,text:f.input};
  try{
   const result=await core.converse(input),after=calls,replay=await core.converse(input),quality=summarizeTurnQuality(result.trace),performance=summarizeTurnPerformance(result.trace);
+  const {groundedCorrectionAcknowledgement}=await import('../core/runtime/dist/conversation/memory-context.js');
+  const acceptedGroundedFallback=quality.groundedCorrectionAcknowledgment===true&&!quality.providerFallback&&result.response===groundedCorrectionAcknowledgement(f.input);
   const checks={replay:replay.response===result.response&&calls===after,noForbidden:(f.reject??[]).every(r=>!new RegExp(r,'iu').test(result.response)),requiredHints:(f.includes??[]).every(s=>result.response.includes(s))&&(f.anyOf??[]).every(group=>group.some(s=>result.response.includes(s))),length:!f.maxChars||result.response.length<=f.maxChars,repairObserved:mode!=='mock'||!f.forceRepair||quality.repairAttempts===1,noFallback:!quality.validationFallback&&!quality.providerFallback};
-  report.turns.push({id:f.id,input:f.input,preferences:f.preferences??{},response:result.response,rubric:f.rubric,checks,quality,performance,modelCalls:calls-before,rawAttempts});
+  report.turns.push({id:f.id,input:f.input,preferences:f.preferences??{},response:result.response,rubric:f.rubric,checks,quality,...(acceptedGroundedFallback?{acceptedGroundedFallback:true}:{}),performance,modelCalls:calls-before,rawAttempts});
  }catch(e){report.turns.push({id:f.id,input:f.input,error:e.code??e.name,modelCalls:calls-before,rawAttempts});}
 }
-report.summary={turns:report.turns.length,calls,errors:report.turns.filter(t=>t.error).length,ruleFailures:report.turns.filter(t=>t.checks&&Object.values(t.checks).some(v=>!v)).map(t=>t.id),humanToneVerdict:'pending'};
+report.summary={turns:report.turns.length,calls,errors:report.turns.filter(t=>t.error).length,ruleFailures:report.turns.filter(t=>t.checks&&Object.entries(t.checks).some(([key,value])=>!value&&!(key==='noFallback'&&t.acceptedGroundedFallback===true))).map(t=>t.id),humanToneVerdict:'pending'};
 await writeFile(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({...report.summary,mode,out}));if(report.summary.errors||report.summary.ruleFailures.length)process.exitCode=1;

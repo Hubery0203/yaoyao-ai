@@ -2,7 +2,7 @@ import {dialogueStyleFailure} from '../src/conversation/style.js';
 import {baselineDecision,buildFallbackResponse,validationFailureSummary} from '@yaoyao/runtime';
 import {describe,it,expect} from 'vitest';
 import type {RelevantMemoryContext} from '@yaoyao/application';
-import {projectTurnMemories,hasContradictedUserFact,hasUnsupportedResidenceRecall,residenceRecallUnknown} from '../src/conversation/memory-context.js';
+import {projectTurnMemories,hasContradictedUserFact,hasUnsupportedResidenceRecall,residenceRecallUnknown,groundedCorrectionAcknowledgement} from '../src/conversation/memory-context.js';
 const base=()=>({memories:[{memoryId:'tea',summary:'用户资料：用户陈述：我喜欢白桃焙茶。'},{memoryId:'coffee',summary:'用户资料：用户陈述：我喜欢咖啡。'}],telemetry:{selectedCount:2}})as RelevantMemoryContext;
 describe('temporary memory restrictions remain turn-local',()=>{
  it.each(['今天不喝白桃焙茶。','我这会儿不想喝白桃焙茶。','此刻不喝白桃焙茶。','这一次不喝白桃焙茶。'])('suppresses only the relevant recommendation: %s',input=>{
@@ -20,7 +20,7 @@ describe('temporary memory restrictions remain turn-local',()=>{
 });
 
 describe('residence needs literal owner evidence',()=>{
- it.each(['你住在东京——这是你设置的时区。','东京。','不确定。你住在东京。','没有记录，但是你住在东京。','我不知道，你之前没跟我说过。'])('rejects unsupported residence: %s',response=>{
+ it.each(['你住在东京——这是你设置的时区。','东京。','不确定。你住在东京。','没有记录，但是你住在东京。','我不知道，你之前没跟我说过。','你还没跟我说过。'])('rejects unsupported residence: %s',response=>{
   expect(hasUnsupportedResidenceRecall(response,'我住哪里？',[])).toBe(true);
  });
  it.each(['我还不确定你住哪里。','没有明确的居住地记录。'])('keeps explicit uncertainty: %s',response=>expect(hasUnsupportedResidenceRecall(response,'我住哪里？',[])).toBe(false));
@@ -41,4 +41,9 @@ it('uses a private allowlisted code for residence evidence failure',()=>{
 it('rejects confirmation probes even without a question mark after a correction',()=>{
  expect(dialogueStyleFailure('大阪啊，住得还顺心吧。','我现在住在大阪。')).toBe('dialogue: unwanted question');
  expect(dialogueStyleFailure('大阪呀。','我现在住在大阪。')).toBeNull();
+});
+
+describe('grounded location correction acknowledgement',()=>{
+ it('uses only the exact current explicit location correction',()=>expect(groundedCorrectionAcknowledgement('我现在住在大阪。')).toBe('大阪呀。'));
+ it.each(['我可能住在大阪。','我住在大阪吗？','她说“我现在住在大阪”。','我现在住在大阪。帮我查天气。','我喜欢大阪。','我现在住在去死。'])('does not turn another task into a short acknowledgement: %s',input=>expect(groundedCorrectionAcknowledgement(input)).toBeNull());
 });

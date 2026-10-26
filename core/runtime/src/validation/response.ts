@@ -2,7 +2,7 @@ import {naturalnessFailure} from '../conversation/naturalness.js';
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse,isDirectNatureQuestion} from '../conversation/style.js';
 import {experienceResponseFailure,groundedLifeReply} from '../conversation/experience.js';
-import {hasContradictedUserFact,hasUnsupportedPlanOutcome,hasUnsupportedResidenceRecall,residenceRecallUnknown} from '../conversation/memory-context.js';
+import {hasContradictedUserFact,hasUnsupportedPlanOutcome,hasUnsupportedResidenceRecall,residenceRecallUnknown,groundedCorrectionAcknowledgement} from '../conversation/memory-context.js';
 /**
  * Response Validation — MVP-002F.
  *
@@ -347,7 +347,7 @@ export function buildFallbackResponse(input: {
   // A literal temporary restriction is user evidence, not a new durable fact.
   if(/^我(?:今天|今晚|这次|暂时)(?:不喝|不想喝)[^，,。！？!?]{1,80}[。！!]?$/u.test(input.userInput.trim()))return '好，那就先不喝。';
   if(/^我(?:今天|今晚|这次|暂时)(?:不吃|不想吃)[^，,。！？!?]{1,80}[。！!]?$/u.test(input.userInput.trim()))return '好，这次就先不吃。';
-  if(style.disclosure)return '好呀。';
+  if(style.disclosure)return groundedCorrectionAcknowledgement(input.userInput)??'好呀。';
   if(hasUnsupportedPlanOutcome('还没有。',input.userInput,input.recentConversation??[]))return '你之前提过这个计划，没说是否已经去过。';
   if(input.experience&&style.casualShare)return '好呀。';
   switch (decision.primaryIntent) {

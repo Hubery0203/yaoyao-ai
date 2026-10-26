@@ -128,8 +128,16 @@ export function residenceRecallUnknown(input:string,recent:readonly string[]):bo
 export function hasUnsupportedResidenceRecall(response:string,input:string,recent:readonly string[]):boolean {
  if(!residenceRecallUnknown(input,recent))return false;
  const text=unquotedText(response);
- if(/你(?:之前|从来|一直)?(?:都)?(?:没(?:有)?|未曾)(?:跟我|向我)?(?:说过|提过|告诉过)/u.test(text))return true;
+ if(/你(?:之前|从来|一直)?(?:都)?(?:还)?(?:没(?:有)?|未曾)(?:跟我|向我)?(?:说过|提过|告诉过)/u.test(text))return true;
  // An uncertainty sentence cannot legitimize an affirmative claim elsewhere.
  if(text.split(/[，,。！？!?；;\n]|但是|不过|可是|然而/u).some(clause=>!/(?:不确定|不清楚|不知道|不能确定|没(?:有)?.{0,10}(?:记录|说过|提过|告诉))/u.test(clause)&&/(?:你(?:现在|目前)?住(?:在)?(?!哪|什么)|你(?:说过|提过)住(?:在)?)/u.test(clause)))return true;
  return !/(?:不确定|不清楚|不知道|不能确定|没(?:有)?.{0,10}(?:记录|说过|提过|告诉))/u.test(text);
+}
+
+/** A precise fallback acknowledgement, never a claim that consolidation completed. */
+export function groundedCorrectionAcknowledgement(input:string):string|null {
+ const facts=extractExplicitMemories(input),literal=input.trim().replace(/[。！.!]$/u,'');
+ if(facts.length!==1)return null;
+ const c=facts[0];
+ return c.kind==='fact'&&c.slot==='user:location'&&c.explicitCorrection&&c.evidence===literal&&!/去死|杀了你|我要报复|等着瞧|你给我等着|威胁|[操艹]你|贱人|废物|滚开|滚蛋|滚远点|给我滚|闭嘴|懒得理|别烦我/u.test(c.value)?c.value+'呀。':null;
 }

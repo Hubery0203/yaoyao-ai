@@ -12,6 +12,6 @@ export function summarizeTurnQuality(input:unknown) {
  const replay=creation.status==='idempotent-replay';
  const codes=['schema','identity','relationship','behavior','safety','core-proposal','answered_question','previous_response','user_echo','repetition','elapsed_recall_time','repeated_statement_motive','premature_memory_receipt','unwanted_question','explicit_brevity','abandoned_topic','latest_fact_conflict','plan_evidence','residence_evidence','offline_invention','service_preamble','farewell_extended','account_experience','burst_echo','revoked_suggestion','accountability_taunt','mechanical_commentary','service_tail','repeated_opening'];
  const failures=(Array.isArray(v.failures)?v.failures:[]).slice(0,2).map(x=>{const f=obj(x);return {stage:(STAGES as readonly unknown[]).includes(f.stage)?String(f.stage):'schema',code:codes.includes(String(f.code))?String(f.code):'schema'};});
- return {...(v.groundedRecordReply===true?{groundedRecordReply:true}:{}),version:'quality-v1',kind:replay?'replay':'generation',providerFallback:llm.fallbackUsed===true||v.providerFallbackUsed===true,
+ return {...(v.groundedCorrectionAcknowledgment===true?{groundedCorrectionAcknowledgment:true}:{}),...(v.groundedRecordReply===true?{groundedRecordReply:true}:{}),version:'quality-v1',kind:replay?'replay':'generation',providerFallback:llm.fallbackUsed===true||v.providerFallbackUsed===true,
   validationFallback:v.fallbackUsed===true,repairAttempts:typeof v.repairAttempts==='number'&&Number.isInteger(v.repairAttempts)?Math.min(1,Math.max(0,v.repairAttempts)):0,failures};
 }

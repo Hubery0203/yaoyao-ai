@@ -57,7 +57,7 @@ import type { PendingUserMessage, TurnInput, TurnOutput } from "./types.js";
 import {renderConversationContinuity} from "./continuity.js";
 import {experienceForTurn,renderCompanionExperience,groundedLifeReply} from "./experience.js";
 import {conversationStyle} from './style.js';
-import {projectTurnMemories,focusDisclosureHistory,selectedMemoryEvidence} from './memory-context.js';
+import {projectTurnMemories,focusDisclosureHistory,selectedMemoryEvidence,residenceRecallUnknown,groundedCorrectionAcknowledgement} from './memory-context.js';
 import {validationFailureSummary} from "./quality.js";
 import { classifySituation } from "./situation.js";
 
@@ -248,10 +248,11 @@ export class ConversationOrchestrator {
       traceId: input.traceId,
     });
     const memoryContext=projectTurnMemories(retrievedMemoryContext,input.text,recentConversationTexts);
+    const residenceGuidance=residenceRecallUnknown(input.text,[...selectedMemoryEvidence(memoryContext),...recentConversationTexts])?'[本轮居住地回忆：可用证据不足] 只回答“我还不确定你现在住哪里。”，到此停下。不说用户从未告知、还没说过，不讨论时区，不猜城市。':'';
     const varietyGuidance=renderTurnVariety(input.text,recentConversationTexts.slice(-6),'',situation.intent);
     const assembled = this.assembler.assemble({
       data: personaData,
-      additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0),
+      additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0)+(residenceGuidance?estimateTokens(residenceGuidance):0),
       inputText: input.text,
       memoryContext,
       conversationHistory:focusDisclosureHistory(input.text,conversationHistory),
@@ -320,6 +321,7 @@ export class ConversationOrchestrator {
         renderConversationContinuity(input.text,recentConversationTexts.slice(-6),{now:turnTime,turns:conversationHistory}),
         experienceGuidance,
         varietyGuidance,
+        residenceGuidance,
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInputInContext:true,
@@ -426,6 +428,7 @@ export class ConversationOrchestrator {
       fallbackUsed,
       finalResponseAccepted: true,
       ...(groundedLifeReply(experience,input.text)?{groundedRecordReply:true}:{}),
+      ...(fallbackUsed&&groundedCorrectionAcknowledgement(input.text)===finalResponse?{groundedCorrectionAcknowledgment:true}:{}),
     };
     executedSteps.push("behavior-validation");
 
