@@ -2,7 +2,7 @@ import {naturalnessFailure} from '../conversation/naturalness.js';
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse,isDirectNatureQuestion} from '../conversation/style.js';
 import {experienceResponseFailure,groundedLifeReply} from '../conversation/experience.js';
-import {hasContradictedUserFact,hasUnsupportedPlanOutcome} from '../conversation/memory-context.js';
+import {hasContradictedUserFact,hasUnsupportedPlanOutcome,hasUnsupportedResidenceRecall,residenceRecallUnknown} from '../conversation/memory-context.js';
 /**
  * Response Validation — MVP-002F.
  *
@@ -282,6 +282,7 @@ function checkContinuity(
   if(naturalFailure)return {ok:false,reason:naturalFailure};
   const styleFailure=dialogueStyleFailure(responseText,userInput);
   if(styleFailure)return {ok:false,reason:styleFailure};
+  if(hasUnsupportedResidenceRecall(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: ungrounded residence recall'};
   if(hasContradictedUserFact(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: contradicted latest user fact'};
   if(hasUnsupportedPlanOutcome(responseText,userInput,[...memoryEvidence,...recentConversation]))return {ok:false,reason:'continuity: unsupported plan outcome'};
   // No verbatim echo of the user input.
@@ -335,6 +336,7 @@ export function buildFallbackResponse(input: {
 }): string {
   const { decision } = input;
   const grounded=groundedLifeReply(input.experience,input.userInput);if(grounded)return grounded;
+  if(residenceRecallUnknown(input.userInput,input.recentConversation??[]))return '我还不确定你现在住哪里。';
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
   if(style.farewell)return '好，回头聊～';
@@ -378,6 +380,7 @@ export function buildRepairInstruction(
     ...(reason.includes('burst echo')?['The input combines short messages from one burst. Respond to the latest development rather than echoing the whole input.']:[]),
     ...(reason.startsWith('dialogue:')?['Respect the current style request. Reply briefly and naturally; omit unwanted questions and abandoned-topic hooks. Do not turn the repair into an apology or a list of promises.']:[]),
     ...(reason.includes('contradicted latest user fact')?['Use the latest literal user statement for this object. Do not repeat the superseded assertion or invent a substitute preference. Today-only restrictions remain temporary.']:[]),
+    ...(reason.includes('ungrounded residence recall')?['Do not infer residence from the account timezone or invent a city. The available user evidence does not establish residence. Briefly state uncertainty.']:[]),
     ...(reason.includes('unsupported plan outcome')?['Only a plan is recorded. Do not assert that it happened or that it definitely has not happened. State only that the user mentioned a plan and has not told you about completion.']:[]),
     `Fix the specific failure above. Output the full 5-field contract JSON again.`,
   ].join("\n");
