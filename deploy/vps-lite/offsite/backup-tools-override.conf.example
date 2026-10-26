@@ -1,0 +1,7 @@
+# Replace REVIEWED_COMMIT with the verified standalone backup-tools commit before installation.
+# Does not update/restart API, nginx, Xray or sshd; original ExecStart/local dump remains intact.
+[Service]
+ExecStartPost=/opt/yaoyao-ai/current/bin/node /opt/yaoyao-ai/backup-tools/REVIEWED_COMMIT/tools/backup/daily.mjs --config /opt/yaoyao-ai/private/offsite-daily.json
+TimeoutStartSec=20min
+MemoryMax=96M
+CPUQuota=20%
