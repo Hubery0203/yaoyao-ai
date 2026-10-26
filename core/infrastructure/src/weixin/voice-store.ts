@@ -1,10 +1,10 @@
 import {createHash,randomBytes} from 'node:crypto';
 import type {PoolClient} from 'pg';
-import {voiceCommand,voiceTextEligible,VOICE_HELP,type VoiceName} from '@yaoyao/application';
+import {voiceCommand,voiceTextEligible,VOICE_HELP,VOICE_LABELS,type VoiceName} from '@yaoyao/application';
 import {WeixinError} from './client.js';
 import type {WeixinStore,WeixinRow} from './store.js';
 import type {WeixinVoiceFile} from './voice-media.js';
-import type {VoiceFailureCode} from '../voice/openai-speech.js';
+import type {VoiceFailureCode} from '../voice/errors.js';
 export interface VoiceJob{state:'eligible'|'reserved'|'generated'|'uploaded'|'failed';voice:VoiceName;artifact:string|null;media:WeixinVoiceFile|null;failure_code:VoiceFailureCode|null;reply_hash:string;settings_version:string}
 const digest=(text:string)=>createHash('sha256').update(text).digest('hex');
 const failures:Record<VoiceFailureCode,string>={VOICE_CREDIT_EXHAUSTED:'语音服务余额不足',VOICE_RATE_LIMITED:'语音服务限流',VOICE_AUTH_FAILED:'语音服务授权不可用',VOICE_RESULT_UNKNOWN:'合成失败或结果不明，不重新收费重试',VOICE_PROVIDER_FAILED:'语音合成失败',VOICE_ARTIFACT_MISSING:'音频已过期或不可用，不重新合成'};
@@ -17,7 +17,7 @@ export class WeixinVoiceStore{
   const last=(await db.query('SELECT v.state,v.failure_code,v.delivery_kind,m.stage FROM weixin_voices v JOIN weixin_messages m ON m.bot_id=v.bot_id AND m.message_key=v.message_key WHERE v.bot_id=$1 AND v.user_id=$2 ORDER BY v.created_at DESC LIMIT 1',[bot,userId])).rows[0];
   const cooldown=q.latest?Math.max(0,Math.ceil((60000-(new Date(q.now).getTime()-new Date(q.latest).getTime()))/1000)):0;
   const lastText=!last?'无':last.failure_code?failures[last.failure_code as VoiceFailureCode]:['accepted','confirmed'].includes(last.stage)?(last.delivery_kind==='audio'?'语音文件微信接口已接受，手机收取/播放需本人确认':'本条已回文字，未确认发送音频'):last.stage==='uncertain'?'发送结果不明，不自动重发':last.stage==='skipped'?'已跳过':last.state==='uploaded'?'音频已上传，等待发送':last.state==='generated'?'音频已生成，等待上传':last.state==='eligible'?'待处理':last.state==='failed'?'合成未完成，已保留文字':'合成尝试已预留，不重复收费';
-  return 'AI语音：'+(s?.enabled?'已开启':'已关闭')+'；服务'+(configured?'已配置':'未配置')+'；声音 '+(s?.voice??'coral')+'\n24小时已尝试 '+q.n+'/'+limit+'，剩余 '+Math.max(0,limit-q.n)+(cooldown?'；冷却约'+cooldown+'秒':'')+'\n最近任务：'+lastText+'\n当前发送MP3文件，非原生语音条；这是应用尝试额度，不是供应商余额。';
+  return 'AI语音：'+(s?.enabled?'已开启':'已关闭')+'；服务'+(configured?'已配置':'未配置')+'；声音 '+VOICE_LABELS[(s?.voice??'coral') as VoiceName]+'\n24小时已尝试 '+q.n+'/'+limit+'，剩余 '+Math.max(0,limit-q.n)+(cooldown?'；冷却约'+cooldown+'秒':'')+'\n最近任务：'+lastText+'\n当前发送MP3文件，非原生语音条；这是应用尝试额度，不是供应商余额。';
  }
  async command(row:WeixinRow,limit:number,configured:boolean):Promise<string|null>{
   const command=voiceCommand(row.turn_text??row.text);if(!command)return null;
@@ -35,14 +35,14 @@ export class WeixinVoiceStore{
    }else if(command.kind==='skip'){
     await db.query("UPDATE weixin_messages m SET stage='skipped',last_error='OWNER_SKIPPED_VOICE' WHERE bot_id=$1 AND user_id=$2 AND stage IN ('pending','generating','ready','uncertain','failed') AND EXISTS(SELECT 1 FROM weixin_voices v WHERE v.bot_id=m.bot_id AND v.message_key=m.message_key)",[bot,row.user_id]);reply='已跳过未完成的语音。';
    }else if(command.kind==='voice'){
-    await db.query('UPDATE weixin_voice_settings SET voice=$3,version=version+1 WHERE bot_id=$1 AND user_id=$2',[bot,row.user_id,command.voice]);reply='声音已设为 '+command.voice+'。';
+    await db.query('UPDATE weixin_voice_settings SET voice=$3,version=version+1 WHERE bot_id=$1 AND user_id=$2',[bot,row.user_id,command.voice]);reply='声音已设为 '+VOICE_LABELS[command.voice]+'。';
    }else if(command.kind==='enable'){
     if(!configured||c.paused||c.auth_expired)reply='语音服务尚不可用，先保留文字回复。';
     else if(s.enabled)reply='语音已开启。';
-    else{const code=randomBytes(4).toString('hex').toUpperCase();await db.query("UPDATE weixin_voice_settings SET pending_hash=$3,pending_until=clock_timestamp()+interval '5 minutes' WHERE bot_id=$1 AND user_id=$2",[bot,row.user_id,digest(code)]);reply='开启后，会将新日常回复的文字发送给OpenAI合成AI语音，以MP3文件发到微信，可能产生费用；长回复仍用文字。每天最多'+limit+'次尝试，不自动重试合成。\n同意请在5分钟内发送“确认语音 '+code+'”；随时发送“关闭语音”停止。';}
+    else{const code=randomBytes(4).toString('hex').toUpperCase();await db.query("UPDATE weixin_voice_settings SET pending_hash=$3,pending_until=clock_timestamp()+interval '5 minutes' WHERE bot_id=$1 AND user_id=$2",[bot,row.user_id,digest('minimax:'+code)]);reply='开启后，会将新日常回复的文字发送给MiniMax合成AI语音，以MP3文件发到微信，可能产生费用；长回复仍用文字。每天最多'+limit+'次尝试，不自动重试合成。\n同意请在5分钟内发送“确认语音 '+code+'”；随时发送“关闭语音”停止。';}
    }else{
     if(!configured||c.paused||c.auth_expired)reply='语音服务尚不可用，先保留文字回复。';
-    else{const r=await db.query('UPDATE weixin_voice_settings SET enabled=true,enabled_at=clock_timestamp(),pending_hash=NULL,pending_until=NULL,version=version+1 WHERE bot_id=$1 AND user_id=$2 AND pending_hash=$3 AND pending_until>clock_timestamp() RETURNING bot_id',[bot,row.user_id,digest(command.code)]);reply=r.rowCount?'已开启AI语音，只处理之后的新日常消息。':'确认码已失效，请重新发送“开启语音”。';}
+    else{const r=await db.query('UPDATE weixin_voice_settings SET enabled=true,enabled_at=clock_timestamp(),pending_hash=NULL,pending_until=NULL,version=version+1 WHERE bot_id=$1 AND user_id=$2 AND pending_hash=$3 AND pending_until>clock_timestamp() RETURNING bot_id',[bot,row.user_id,digest('minimax:'+command.code)]);reply=r.rowCount?'已开启AI语音，只处理之后的新日常消息。':'确认码已失效，请重新发送“开启语音”。';}
    }
    await db.query("UPDATE weixin_messages SET reply=$3,stage='ready' WHERE bot_id=$1 AND message_key=$2",[bot,row.message_key,reply]);return reply;
   });

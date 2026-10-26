@@ -1,4 +1,4 @@
-import {VoiceFiles,OpenAISpeechProvider,WeixinVoiceStore,VoiceProviderError,uploadWeixinVoiceFile,type AppConfig,type WeixinStore,type WeixinClient,type WeixinRow,type VoiceJob,type WeixinVoiceFile} from '@yaoyao/infrastructure';
+import {VoiceFiles,MiniMaxSpeechProvider,WeixinVoiceStore,VoiceProviderError,uploadWeixinVoiceFile,type AppConfig,type WeixinStore,type WeixinClient,type WeixinRow,type VoiceJob,type WeixinVoiceFile} from '@yaoyao/infrastructure';
 export interface VoiceDependencies{
  jobs:Pick<WeixinVoiceStore,'reserve'|'save'|'canUpload'>;files:Pick<VoiceFiles,'available'|'save'|'read'>;
  generate:(text:string,voice:VoiceJob['voice'])=>Promise<Buffer>;upload:(bytes:Buffer)=>Promise<WeixinVoiceFile>;limit:number;
@@ -20,8 +20,8 @@ export async function prepareWeixinVoice(row:WeixinRow,reply:string,deps:VoiceDe
   let media:WeixinVoiceFile;try{media=await deps.upload(bytes);}catch(e){if(row.attempts>=3){await deps.jobs.save(row,'failed',null,null,'VOICE_PROVIDER_FAILED');return;}throw e;}await deps.jobs.save(row,'uploaded',null,media);
  }
 }
-export function voiceConfigured(config:AppConfig):boolean{return config.VOICE_ENABLED==='1'&&!!config.OPENAI_VOICE_API_KEY&&!!config.VOICE_STORAGE_DIR;}
+export function voiceConfigured(config:AppConfig):boolean{return config.VOICE_ENABLED==='1'&&!!config.MINIMAX_VOICE_API_KEY&&!!config.MINIMAX_VOICE_REGION&&!!config.VOICE_STORAGE_DIR;}
 export function createVoiceDependencies(config:AppConfig,store:WeixinStore,client:WeixinClient,signal:AbortSignal):VoiceDependencies|undefined{
- if(!voiceConfigured(config))return;const provider=new OpenAISpeechProvider(config.OPENAI_VOICE_API_KEY!);
+ if(!voiceConfigured(config))return;const provider=new MiniMaxSpeechProvider(config.MINIMAX_VOICE_API_KEY!,config.MINIMAX_VOICE_REGION!,config.MINIMAX_VOICE_MODEL);
  return {jobs:new WeixinVoiceStore(store),files:new VoiceFiles(config.VOICE_STORAGE_DIR!),generate:(text,voice)=>provider.generate(text,voice,signal),upload:bytes=>uploadWeixinVoiceFile(client,bytes,fetch,signal),limit:config.VOICE_MAX_PER_24H};
 }

@@ -55,3 +55,5 @@ export * from './voice/files.js';
 export * from './voice/openai-speech.js';
 export * from './weixin/voice-media.js';
 export * from './weixin/voice-store.js';
+
+export * from './voice/minimax-speech.js';

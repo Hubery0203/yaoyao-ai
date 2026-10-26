@@ -1,8 +1,7 @@
 import {VOICE_NAMES,voiceTextEligible,type VoiceName} from '@yaoyao/application';
 import {validateMp3,VOICE_MAX_BYTES} from './files.js';
-export const VOICE_FAILURE_CODES=['VOICE_CREDIT_EXHAUSTED','VOICE_RATE_LIMITED','VOICE_AUTH_FAILED','VOICE_RESULT_UNKNOWN','VOICE_PROVIDER_FAILED','VOICE_ARTIFACT_MISSING'] as const;
-export type VoiceFailureCode=typeof VOICE_FAILURE_CODES[number];
-export class VoiceProviderError extends Error{constructor(readonly code:VoiceFailureCode){super(code);}}
+import {VoiceProviderError} from './errors.js';
+export {VOICE_FAILURE_CODES,VoiceProviderError,type VoiceFailureCode} from './errors.js';
 export class OpenAISpeechProvider{
  constructor(private readonly key:string,private readonly fetcher:typeof fetch=fetch){}
  async generate(text:string,voice:VoiceName,signal?:AbortSignal):Promise<Buffer>{
