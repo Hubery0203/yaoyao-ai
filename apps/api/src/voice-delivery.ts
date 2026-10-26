@@ -23,5 +23,5 @@ export async function prepareWeixinVoice(row:WeixinRow,reply:string,deps:VoiceDe
 export function voiceConfigured(config:AppConfig):boolean{return config.VOICE_ENABLED==='1'&&!!config.MINIMAX_VOICE_API_KEY&&!!config.MINIMAX_VOICE_REGION&&!!config.VOICE_STORAGE_DIR;}
 export function createVoiceDependencies(config:AppConfig,store:WeixinStore,client:WeixinClient,signal:AbortSignal):VoiceDependencies|undefined{
  if(!voiceConfigured(config))return;const provider=new MiniMaxSpeechProvider(config.MINIMAX_VOICE_API_KEY!,config.MINIMAX_VOICE_REGION!,config.MINIMAX_VOICE_MODEL);
- return {jobs:new WeixinVoiceStore(store),files:new VoiceFiles(config.VOICE_STORAGE_DIR!),generate:(text,voice)=>provider.generate(text,voice,signal),upload:bytes=>uploadWeixinVoiceFile(client,bytes,fetch,signal),limit:config.VOICE_MAX_PER_24H};
+ return {jobs:new WeixinVoiceStore(store,config.VOICE_COOLDOWN_SECONDS),files:new VoiceFiles(config.VOICE_STORAGE_DIR!),generate:(text,voice)=>provider.generate(text,voice,signal),upload:bytes=>uploadWeixinVoiceFile(client,bytes,fetch,signal),limit:config.VOICE_MAX_PER_24H};
 }

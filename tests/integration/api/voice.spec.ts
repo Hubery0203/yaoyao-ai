@@ -71,4 +71,6 @@ describe.skipIf(!docker)('voice durable controls, attempt accounting and deliver
   await enabled();expect((await control('语音声音 '+label)).reply).toContain(label);const row=await ready();const reserved=await jobs.reserve(row,row.reply!,10);expect(reserved.fresh).toBe(true);expect(reserved.job?.voice).toBe(profile);expect((await jobs.reserve(row,row.reply!,10)).fresh).toBe(false);expect((await control('语音状态')).reply).toContain(label);
  });
 
+ it('zero cooldown allows consecutive daily speech while preserving the rolling cap',async()=>{jobs=new WeixinVoiceStore(store,0);await enabled();const a=await ready(),b=await ready();expect((await jobs.reserve(a,a.reply!,2)).fresh).toBe(true);expect((await jobs.reserve(b,b.reply!,2)).fresh).toBe(true);const c=await ready();expect((await jobs.reserve(c,c.reply!,2)).fresh).toBe(false);expect((await control('语音状态')).reply).not.toContain('冷却');jobs=new WeixinVoiceStore(store);});
+
 });
