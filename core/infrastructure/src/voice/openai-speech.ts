@@ -1,11 +1,11 @@
-import {VOICE_NAMES,voiceTextEligible,type VoiceName} from '@yaoyao/application';
+import {voiceTextEligible,type VoiceName} from '@yaoyao/application';
 import {validateMp3,VOICE_MAX_BYTES} from './files.js';
 import {VoiceProviderError} from './errors.js';
 export {VOICE_FAILURE_CODES,VoiceProviderError,type VoiceFailureCode} from './errors.js';
 export class OpenAISpeechProvider{
  constructor(private readonly key:string,private readonly fetcher:typeof fetch=fetch){}
  async generate(text:string,voice:VoiceName,signal?:AbortSignal):Promise<Buffer>{
-  if(!this.key||!VOICE_NAMES.includes(voice)||!voiceTextEligible(text))throw new VoiceProviderError('VOICE_PROVIDER_FAILED');
+  if(!this.key||!['coral','marin','shimmer'].includes(voice)||!voiceTextEligible(text))throw new VoiceProviderError('VOICE_PROVIDER_FAILED');
   let response:Response;try{response=await this.fetcher('https://api.openai.com/v1/audio/speech',{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+this.key,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-4o-mini-tts',voice,input:text,response_format:'mp3',instructions:'用自然、轻柔的普通话说出原文，像日常聊天。语速适中，不播音，不夸张表演。不增添开场、解释或任何额外文字。'}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(45000)]):AbortSignal.timeout(45000)});}catch{throw new VoiceProviderError('VOICE_RESULT_UNKNOWN');}
   if(!response.ok){
    let code='';const reader=response.body?.getReader();let size=0;const parts:Uint8Array[]=[];

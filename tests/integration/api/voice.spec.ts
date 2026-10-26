@@ -67,4 +67,8 @@ describe.skipIf(!docker)('voice durable controls, attempt accounting and deliver
   await ctx.db.adminPool.query('UPDATE weixin_voice_settings SET pending_hash=$1',[createHash('sha256').update(code).digest('hex')]);expect((await control('确认语音 '+code)).reply).toContain('失效');expect((await ctx.db.adminPool.query('SELECT enabled FROM weixin_voice_settings')).rows[0].enabled).toBe(false);
  });
 
+ it.each([['妩媚御姐','wumei'],['嗲嗲学妹','diadia']] as const)('persists the added %s choice and reserves it once',async(label,profile)=>{
+  await enabled();expect((await control('语音声音 '+label)).reply).toContain(label);const row=await ready();const reserved=await jobs.reserve(row,row.reply!,10);expect(reserved.fresh).toBe(true);expect(reserved.job?.voice).toBe(profile);expect((await jobs.reserve(row,row.reply!,10)).fresh).toBe(false);expect((await control('语音状态')).reply).toContain(label);
+ });
+
 });

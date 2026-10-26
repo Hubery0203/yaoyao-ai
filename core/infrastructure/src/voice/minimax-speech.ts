@@ -3,7 +3,7 @@ import {validateMp3,VOICE_MAX_BYTES} from './files.js';
 import {VoiceProviderError,type VoiceFailureCode} from './errors.js';
 export type MiniMaxVoiceRegion='cn'|'international';
 export type MiniMaxSpeechModel='speech-2.8-hd'|'speech-2.8-turbo';
-export const MINIMAX_SYSTEM_VOICES:Record<VoiceName,string>={coral:'Chinese (Mandarin)_Warm_Bestie',marin:'Chinese (Mandarin)_Gentle_Senior',shimmer:'Chinese (Mandarin)_Soft_Girl'};
+export const MINIMAX_SYSTEM_VOICES:Record<VoiceName,string>={coral:'Chinese (Mandarin)_Warm_Bestie',marin:'Chinese (Mandarin)_Gentle_Senior',shimmer:'Chinese (Mandarin)_Soft_Girl',wumei:'wumei_yujie',diadia:'diadia_xuemei'};
 const origins={cn:'https://api.minimax.cn',international:'https://api.minimax.io'} as const;
 function failure(status:number,code:unknown):VoiceFailureCode{
  if(code===1008||code===2053)return 'VOICE_CREDIT_EXHAUSTED';

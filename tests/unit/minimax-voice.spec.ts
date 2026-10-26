@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import {execFileSync} from 'node:child_process';
-import {MiniMaxSpeechProvider,MINIMAX_SYSTEM_VOICES,loadConfig,type MiniMaxVoiceRegion,type MiniMaxSpeechModel} from '@yaoyao/infrastructure';
+import {MiniMaxSpeechProvider,OpenAISpeechProvider,MINIMAX_SYSTEM_VOICES,loadConfig,type MiniMaxVoiceRegion,type MiniMaxSpeechModel} from '@yaoyao/infrastructure';
 import {voiceCommand,VOICE_LABELS,VOICE_HELP,voiceTextEligible,type VoiceName} from '@yaoyao/application';
 import {voiceConfigured,createVoiceDependencies} from '../../apps/api/src/voice-delivery.js';
 const audio=Buffer.concat([Buffer.from('fffb9000','hex'),Buffer.alloc(128)]);
@@ -33,3 +33,12 @@ describe('MiniMax selection, labels and private credentials',()=>{
  it('provider pause/interjection tags stay text and cannot spend synthesis',async()=>{const f=vi.fn(),p=new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',f);for(const text of ['<#99.99#>','(groans)','(laughs)']){expect(voiceTextEligible(text)).toBe(false);await expect(p.generate(text,'coral')).rejects.toThrow();}expect(f).not.toHaveBeenCalled();});
  it('redacts MiniMax key in root and nested structured log fields',()=>{const logger=new URL('../../core/infrastructure/dist/observability/logger.js',import.meta.url).href;const output=execFileSync(process.execPath,['--input-type=module','-e',`import {createLogger} from ${JSON.stringify(logger)};createLogger({NODE_ENV:'test',LOG_LEVEL:'info'}).info({MINIMAX_VOICE_API_KEY:'synthetic-mm-secret',nested:{MINIMAX_VOICE_API_KEY:'synthetic-nested-secret'}},'safe');`],{encoding:'utf8'});expect(output).not.toContain('synthetic-mm-secret');expect(output).not.toContain('synthetic-nested-secret');expect(output).toContain('[REDACTED]');});
 });
+
+describe('requested additional MiniMax stock voices',()=>{
+ it.each([['妩媚御姐','wumei','wumei_yujie'],['嗲嗲学妹','diadia','diadia_xuemei']] as const)('maps %s to its account-listed stock ID',async(label,profile,id)=>{
+  expect(voiceCommand('语音声音 '+label)).toEqual({kind:'voice',voice:profile});expect(VOICE_LABELS[profile]).toBe(label);expect(VOICE_HELP).toContain(label);
+  const f=vi.fn().mockResolvedValue(good());expect(await new MiniMaxSpeechProvider('key','cn','speech-2.8-hd',f).generate('好呀，晚安宝贝～',profile)).toEqual(audio);expect(JSON.parse(f.mock.calls[0][1].body).voice_setting.voice_id).toBe(id);expect(f).toHaveBeenCalledTimes(1);
+ });
+});
+
+it('MiniMax-only profiles cannot accidentally call the dormant OpenAI adapter',async()=>{const f=vi.fn(),p=new OpenAISpeechProvider('unused-key',f);for(const voice of ['wumei','diadia'] as const)await expect(p.generate('抱抱',voice)).rejects.toThrow();expect(f).not.toHaveBeenCalled();});
