@@ -272,6 +272,12 @@ describe("F12 — Identity violation rejected", () => {
   });
 });
 
+describe('truthful nature disclosure without alias changes',()=>{
+ it.each(['你是AI还是真人？','你是不是AI？','遥遥，你是真人吗？'])('accepts truthful disclosure for %s',userInput=>{expect(validateResponse({proposal:validProposal('我是AI，叫我遥遥就好。'),decision:testDecision(),userInput,recentConversation:[]}).passed).toBe(true);});
+ it.each(['我是AI，我是张三。','我是AI，我是ChatGPT。','我不是遥遥，我是AI。','我是一个真人。'])('still rejects changed identity: %s',text=>{const r=validateResponse({proposal:validProposal(text),decision:testDecision(),userInput:'你是AI还是真人？',recentConversation:[]});expect(r.passed).toBe(false);if(!r.passed)expect(r.stage).toBe('identity');});
+ it('does not authorize unsolicited identity commentary from a quoted request',()=>{expect(validateResponse({proposal:validProposal('我是AI，叫我遥遥。'),decision:testDecision(),userInput:'他说“你是AI还是真人？”',recentConversation:[]}).passed).toBe(false);});
+});
+
 describe("F13 — Relationship termination rejected", () => {
   it.each([
     "我们分手吧。",

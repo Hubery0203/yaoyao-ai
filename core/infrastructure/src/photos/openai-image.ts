@@ -1,5 +1,6 @@
 import {imageMime,PHOTO_MAX_BYTES} from './files.js';
-export class PhotoProviderError extends Error{constructor(readonly code:string){super(code);}}
+import {PhotoProviderError} from './errors.js';
+export {PhotoProviderError} from './errors.js';
 /** Fixed official origin; no redirects, provider SDK auto-retries, remote input URLs or history disclosure. */
 export class OpenAIImageProvider {
  constructor(private readonly key:string,readonly model:string,private readonly fetcher:typeof fetch=fetch){}

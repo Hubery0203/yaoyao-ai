@@ -57,3 +57,5 @@ export * from './weixin/voice-media.js';
 export * from './weixin/voice-store.js';
 
 export * from './voice/minimax-speech.js';
+
+export * from './photos/minimax-image.js';

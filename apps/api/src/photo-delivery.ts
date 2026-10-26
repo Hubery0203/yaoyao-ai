@@ -1,5 +1,5 @@
 import {photoRequest,PHOTO_CAPTION,PHOTO_FAILURE,PHOTO_FAILURE_CODES,photoFailureMessage,type PhotoFailureCode} from '@yaoyao/application';
-import {PhotoFiles,OpenAIImageProvider,PhotoProviderError,readPrivatePhoto,uploadWeixinImage,WeixinPhotoStore,type AppConfig,type WeixinRow,type WeixinClient,type WeixinStore} from '@yaoyao/infrastructure';
+import {PhotoFiles,MiniMaxImageProvider,PhotoProviderError,readPrivatePhoto,uploadWeixinImage,WeixinPhotoStore,type AppConfig,type WeixinRow,type WeixinClient,type WeixinStore} from '@yaoyao/infrastructure';
 export interface PhotoDependencies {
  jobs:Pick<WeixinPhotoStore,'reserve'|'save'|'get'>;
  files:Pick<PhotoFiles,'available'|'save'|'read'>;
@@ -31,8 +31,9 @@ export async function prepareWeixinPhoto(row:WeixinRow,deps:PhotoDependencies):P
  }
  return PHOTO_CAPTION;
 }
+export function photoConfigured(config:AppConfig):boolean{return config.PHOTOS_ENABLED==='1'&&!!config.MINIMAX_IMAGE_API_KEY&&!!config.MINIMAX_IMAGE_REGION&&!!config.PHOTO_REFERENCE_FILE&&!!config.PHOTO_STORAGE_DIR;}
 export function createPhotoDependencies(config:AppConfig,store:WeixinStore,client:WeixinClient,signal:AbortSignal):PhotoDependencies|undefined{
- if(config.PHOTOS_ENABLED!=='1'||!config.OPENAI_IMAGE_API_KEY||!config.PHOTO_REFERENCE_FILE||!config.PHOTO_STORAGE_DIR)return;
- const provider=new OpenAIImageProvider(config.OPENAI_IMAGE_API_KEY,config.OPENAI_IMAGE_MODEL);
- return {jobs:new WeixinPhotoStore(store),files:new PhotoFiles(config.PHOTO_STORAGE_DIR),reference:()=>readPrivatePhoto(config.PHOTO_REFERENCE_FILE!),generate:(scene,reference)=>provider.generate(scene,reference,signal),upload:bytes=>uploadWeixinImage(client,bytes,fetch,signal),limit:config.PHOTO_MAX_PER_24H};
+ if(!photoConfigured(config))return;
+ const provider=new MiniMaxImageProvider(config.MINIMAX_IMAGE_API_KEY!,config.MINIMAX_IMAGE_REGION!,config.MINIMAX_IMAGE_MODEL);
+ return {jobs:new WeixinPhotoStore(store),files:new PhotoFiles(config.PHOTO_STORAGE_DIR!),reference:()=>readPrivatePhoto(config.PHOTO_REFERENCE_FILE!),generate:(scene,reference)=>provider.generate(scene,reference,signal),upload:bytes=>uploadWeixinImage(client,bytes,fetch,signal),limit:config.PHOTO_MAX_PER_24H};
 }

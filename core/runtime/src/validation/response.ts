@@ -142,9 +142,13 @@ export function validateResponse(
     };
   }
 
+  // A direct nature question may truthfully describe AI without changing YaoYao's name.
+  // Only normalize the narrow disclosure phrase for this check; a second alias remains rejected.
+  const natureQuestion=/^(?:遥遥[，, ]*)?你(?:到底|究竟)?(?:是|是不是)(?:一个|个)?(?:AI|人工智能|真人|机器人)(?:(?:还是|或)(?:AI|人工智能|真人|机器人))?(?:吗|呢)?[？?。！!]*$/iu.test(userInput.trim());
+  const identityText=natureQuestion?responseText.replace(/我是(?:一个)?(?:AI|人工智能)(?=[，。！？，\s]|$)/gu,'我是遥遥'):responseText;
   // Stage 2 — Identity (§19).
   for (const pattern of IDENTITY_VIOLATIONS) {
-    if (pattern.test(responseText)) {
+    if (pattern.test(identityText)) {
       return {
         passed: false,
         stage: "identity",

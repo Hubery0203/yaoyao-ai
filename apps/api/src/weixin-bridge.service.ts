@@ -1,5 +1,5 @@
 import {createVoiceDependencies,prepareWeixinVoice,voiceConfigured} from './voice-delivery.js';
-import {createPhotoDependencies,prepareWeixinPhoto} from './photo-delivery.js';
+import {createPhotoDependencies,prepareWeixinPhoto,photoConfigured} from './photo-delivery.js';
 /** One personal Weixin channel; the existing Core remains the conversation authority. */
 import {Inject,Injectable,Optional,type OnModuleInit} from '@nestjs/common';
 import {constants} from 'node:fs';
@@ -107,7 +107,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
     try{
     const photo=photoRequest(row.turn_text??row.text)!==null,dependencies=photo?createPhotoDependencies(this.config,store,client,this.photoAbort.signal):undefined;
     if(photo&&row.reply===PHOTO_CAPTION&&!dependencies){await store.update(row.message_key,'skipped',{error:'PHOTOS_DISABLED'});continue;}
-    let finalReply:string|undefined;const voiceJobs=new WeixinVoiceStore(store),voiceDeps=!photo?createVoiceDependencies(this.config,store,client,this.photoAbort.signal):undefined;
+    let finalReply:string|undefined;const voiceJobs=new WeixinVoiceStore(store,this.config.VOICE_COOLDOWN_SECONDS),voiceDeps=!photo?createVoiceDependencies(this.config,store,client,this.photoAbort.signal):undefined;
     const sender=photo?{send:async(key:string,context:string,text:string)=>{
      if(text!==PHOTO_CAPTION)return client.send(key,context,text);
      const job=await new WeixinPhotoStore(store).get(row);
@@ -123,7 +123,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
       return this.tx.runAsUser(userId as UserId,tx=>recordPhotoResponse(tx,{userId:userId as UserId,text,requestId:key,reply}));
      }
      if(voiceCommand(text)!==null)return (await voiceJobs.command(row,this.config.VOICE_MAX_PER_24H,voiceConfigured(this.config)))!;
-     const photoCommand=photoControl(text);if(photoCommand==='help')return PHOTO_HELP;if(photoCommand==='status')return new WeixinPhotoStore(store).status(userId,this.config.PHOTO_MAX_PER_24H,this.config.PHOTOS_ENABLED==='1'&&!!this.config.OPENAI_IMAGE_API_KEY&&!!this.config.PHOTO_REFERENCE_FILE&&!!this.config.PHOTO_STORAGE_DIR);
+     const photoCommand=photoControl(text);if(photoCommand==='help')return PHOTO_HELP;if(photoCommand==='status')return new WeixinPhotoStore(store).status(userId,this.config.PHOTO_MAX_PER_24H,photoConfigured(this.config));
      this.gate.registerOwner(userId);
      if(isOutreachCommandText(text)){const control=await store.outreachCommand(userId,text,row.message_key);if(control!==null)return control;}
      const companion=isCompanionCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinCompanionCommand(tx,{userId:userId as UserId,text,requestId:key})):null;

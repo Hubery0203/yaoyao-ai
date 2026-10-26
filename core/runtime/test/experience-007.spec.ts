@@ -35,3 +35,8 @@ describe('007A observed bodily need invention',()=>{
  it.each(['“我今天正好有点想吃点热的”是例句。','如果我今天想吃点热的，这只是个假设。','我没有说我今天想吃拉面。','我也想你。','你今天吃点热的也不错。'])('preserves quotation, hypothesis, negation and non-bodily speech: %s',reply=>expect(dialogueStyleFailure(reply,'聊聊今天')).toBeNull());
  it('preserves explicit writing tasks',()=>expect(dialogueStyleFailure('我今天正好想吃点热的。','写一段故事对白。')).toBeNull());
 });
+
+describe('natural persona and truthful direct identity questions',()=>{
+ it('keeps affection simple without forced identity commentary',()=>expect(dialogueStyleFailure('好呀，晚安宝贝～','一起睡觉吧')).toBeNull());
+ it('allows a brief truthful answer when directly asked about AI identity',()=>expect(dialogueStyleFailure('是AI呀，叫我遥遥就好。','你是AI还是真人？')).toBeNull());
+});
