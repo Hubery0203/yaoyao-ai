@@ -77,9 +77,11 @@ export {recordAcceptedOutreach} from './usecases/outreach.js';
 export * from './experience.js';
 export * from './usecases/experience.js';
 export {handleWeixinMemoryCommand} from './usecases/weixin-memory.js';
-export {photoRequest,PHOTO_CAPTION,PHOTO_FAILURE} from './photos.js';
+export {photoRequest,PHOTO_CAPTION,PHOTO_FAILURE,PHOTO_FAILURE_CODES,photoFailureMessage,photoControl,PHOTO_HELP,type PhotoFailureCode} from './photos.js';
 export {recordPhotoResponse} from './usecases/photo-history.js';
 
 export * from './companion-commands.js';
 export {handleWeixinCompanionCommand} from './usecases/weixin-companion.js';
 export * from './outreach-commands.js';
+
+export * from './voice.js';

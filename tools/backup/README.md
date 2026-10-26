@@ -1,41 +1,58 @@
-# Private encrypted backups (009D)
+# 010D ciphertext repository and recovery
 
-This is a local/host CLI, not a scheduled backup service. The owner deferred the offsite destination. Nothing is uploaded, installed or scheduled automatically. An encrypted file on the same machine is **not** offsite disaster recovery. Keep a separate protected copy of the key outside the host before relying on this tool.
+These tools do not discover accounts, create server users, install keys or schedules, rotate credentials, call models or restore a live DB. All example values are placeholders. Server installation requires the operator's scoped approval.
 
-Use the bundled Node 24 runtime. All examples require a dedicated 0700 directory. Existing files/output directories are refused; no live database restore or source removal is performed.
+## Source and key custody
 
-```sh
-node tools/backup/backup.mjs key --out /private-backup/archive.key
-node tools/backup/backup.mjs encrypt --key-file /private-backup/archive.key --manifest /private-backup/inputs.json --out /private-backup/snapshot.yyb
-node tools/backup/backup.mjs restore --key-file /private-backup/archive.key --archive /private-backup/snapshot.yyb --out /private-backup/new-restore
+Reuse the existing once-daily Tokyo database backup timer, after its successful fresh `pg_dump -Fc` and `pg_restore --list`; serialize release/config/credential rotation with snapshot creation. A dump is transaction-consistent within PostgreSQL; configuration files are separate captures and are not claimed to be an atomic distributed snapshot.
+
+Create a 32-byte AES key using `backup.mjs key --out PRIVATE_FILE` only after approval. Verify a second private copy on the operator's Mac before enabling retention. Upload-only SSH key and AES key are separate. Neither the AES key nor plaintext DB/config/Weixin credentials go to the US machine. The US root recovery SSH key stays on the Mac. Losing every copy of the AES key makes archives unrecoverable.
+
+A private 0600 snapshot JSON in a 0700 folder explicitly names `dump`, `apiEnv`, `weixinAuth`, `reference`, `release`, `keyFile`, `out`. Run `node snapshot-cli.mjs --config PRIVATE_CONFIG`. All five inputs must be regular private files; fresh custom dump <=1h; total payload <=48MiB. Capture a private copy of RELEASE.json if its deployed original is public-readable. No directory scanning or image-spool collection. Snapshot output cannot overwrite an existing path. The key inode cannot be a payload. Temporary plaintext copies are removed after success/failure (normal file removal, no secure-erasure claim).
+
+## Restricted SSH receiver
+
+On US: dedicated unprivileged `yaoyao-backup` user and private directory `/var/lib/yaoyao-backup/ciphertext` (0700), root-owned receiver `/usr/local/lib/yaoyao-backup/receiver.py` and root-owned config `/etc/yaoyao-backup-receiver.json` (0644, only directory/namespace; no secrets).
+
+Config: `{"directory":"/var/lib/yaoyao-backup/ciphertext","namespace":"32_RANDOM_LOWERCASE_HEX"}`. Namespace must match the private Tokyo client JSON. Initialize only an empty repository through `offsite-cli.mjs init --config PRIVATE_CONFIG`. No writes outside the dedicated directory, no general remote shell.
+
+The upload public key's authorized_keys entry must restrict source to Tokyo:
+
+```
+from="8.216.54.161",restrict,command="/usr/bin/nice -n 15 /usr/bin/python3 /usr/local/lib/yaoyao-backup/receiver.py" ssh-ed25519 PUBLIC_KEY
 ```
 
-`inputs.json` explicitly selects already-created, quiescent private files (0600). No recursive discovery of home directories, credentials or SSH keys. Example:
+Provision this user's locked-password account with SSH public-key access using the host's existing policy. Do not change/restart sshd, proxy or nginx. The receiving account must not own receiver/config/authorized_keys. Test that a shell command, PTY, forwarding and SFTP cannot run under this key before enabling the scheduled job. No root/admin key is copied from Mac to Tokyo.
 
-```json
-{"entries":[
- {"name":"database.dump","path":"/private-backup/database.dump"},
- {"name":"runtime.env","path":"/private-backup/runtime.env"},
- {"name":"weixin.json","path":"/private-backup/weixin.json"},
- {"name":"reference.png","path":"/private-backup/reference.png"},
- {"name":"release.json","path":"/private-backup/release.json"}
-]}
+Client JSON (0600, 0700 parent): `driver:"ssh"`, `host:"164.92.84.160"`, `user:"yaoyao-backup"`, `port:22`, `identityFile:"ABSOLUTE_PRIVATE_UPLOAD_KEY"`, `knownHostsFile:"ABSOLUTE_PINNED_HOSTS"`, `namespace:"32_RANDOM_LOWERCASE_HEX"`. Obtain the host key through the already trusted admin connection and verify its fingerprint; unknown/changed keys must fail, never auto-accept. Client disables forwarding, ProxyCommand/ProxyJump and connection multiplexing.
+
+Receiver serializes requests and enforces <=64MiB per object, <=512MiB committed plus abandoned-upload files, <=1000 named objects. Full capacity fails closed, without deleting old backups. Abandoned `.upload-*` files after a crash count toward capacity and require assessed manual cleanup. This application cap is not a filesystem quota against a compromised US administrator.
+
+## Publish, verify, retain
+
+```
+node offsite-cli.mjs publish --config PRIVATE_CONFIG --archive PRIVATE_ARCHIVE --key-file PRIVATE_KEY --receipt NEW_PRIVATE_RECEIPT
+node offsite-cli.mjs verify --config PRIVATE_CONFIG --receipt PRIVATE_RECEIPT --key-file PRIVATE_KEY --out NEW_PRIVATE_VERIFICATION
+node offsite-cli.mjs retain --config PRIVATE_CONFIG --receipt PRIVATE_VERIFICATION --keep 7
 ```
 
-Create the database dump using `pg_dump -Fc` from a compatible PostgreSQL client. Snapshot runtime configuration, the Weixin credentials referenced by it, the canonical photo reference and release/migration checksums deliberately; do not put the encryption key in the manifest or upload it beside ciphertext. A live database restore needs a separate explicit maintenance authorization, not this tool's `restore` command.
+Publication pins the source descriptor, uploads ciphertext atomically without overwrite, re-downloads it, checks SHA256 and decrypts in a new private temporary directory to authenticate the GCM tag and manifest. Only then is a success receipt written. A failed operation leaves its `.pending` plan; replay uses the same `--name` from that plan, archive, key and receipt. A different plan is rejected. No automatic regeneration or network retries.
 
-Format: `YAOYAO1\n` + random 96-bit nonce + AES-256-GCM ciphertext + 128-bit tag; the header is AAD. Key is exactly 32 random bytes from a private file, not a password. Encrypted payload contains a bounded length-prefixed manifest and sequential file bytes. Manifest names, sizes and SHA256s are authenticated. Maximum total input 1GiB, 32 top-level names, 64KiB manifest; no paths/links/devices in output. Sources are read through no-follow pinned descriptors and rehashed while encrypting; any changed/truncated input prevents publication. Archive publication uses an atomic no-overwrite link.
+Retention defaults to preview. `--apply` additionally requires a <=30min authenticated receipt, exact repository ID, unchanged verified object and hash-checked candidates. It preserves the verified archive and at least the newest two. Enable seven-archive pruning only after independent Mac key escrow is confirmed by the operator; the tool's `keyEscrowVerified:false` deliberately does not claim escrow from a local check. Unknown files never become deletion candidates. A compromised remote host can delete backups; this is not immutable/WORM storage.
 
-Restore reserves a NEW 0700 output directory. Unauthenticated plaintext is held only under its private `.staging` subdirectory, never exposed as completed restored files. Full GCM authentication and all sizes/hashes must pass before file promotion. `RESTORED.json` is written last. Any failure removes only the newly created output directory; existing paths are never removed or overwritten. Consumers must wait for successful completion/receipt, not read `.staging`. Plaintext staging/output must be on trusted private storage; encrypted disk volumes and physical/media security remain the operator's responsibility.
+## Disaster recovery (explicit operator runbook)
 
-## Isolated database recovery checklist
+1. Keep production API/Weixin running where it is; do not restore into its database, current release or photo directory. Use an isolated disposable machine/cluster, no public ports, no receiver, no external API calls. Ensure compatible PostgreSQL16 + pgvector0.8.0 and the recorded application release.
+2. From the operator Mac, retrieve the desired ciphertext and successful receipt using the existing trusted US admin SSH connection. This works independently of Tokyo's source-restricted upload key. Verify receipt hash/repository identity and separately held AES key. `backup.mjs restore --archive PRIVATE_DOWNLOAD --key-file ESCROW_COPY --out NEW_PRIVATE_DIR` authenticates before promoting plaintext files. Keep original ciphertext untouched.
+3. Inspect `RESTORED.json` (all five files), release metadata and dump archive listing. Restore into a NEW database with `pg_restore --exit-on-error`, preserving owners/grants; bootstrap `yaoyao_admin` plus NOLOGIN `yaoyao_migrate`, `yaoyao_app`, `yaoyao_readonly`, `yaoyao_breakglass` as needed. Never use `--clean` against production. Extensions, schemas, migrations, rows, sequences and RLS policies must agree with the source baseline.
+4. Compare table counts and deterministic data digests, sequence state, migration checksums/head, channel binding/cursor/inbox/outbox/photo states, RLS enable/force/policies/grants. Test owner isolation with synthetic accounts. Do not print conversation text, tokens, media AES keys or environment values in the evidence.
+5. Configuration paths are evidence, not ready-to-run config: rewrite DB URL, reference/spool paths and permissions for the new host. Never load restored api.env or Weixin token into a running service during the drill. API/Weixin/outreach must remain disabled. Validate reference bytes/ownership and auth file existence offline only.
+6. Record results separately: download/authentication, key escrow, isolated PostgreSQL restoration and actual service cutover are different acceptance gates. Local protocol doubles prove none of the remote gates. Dispose only the drill's new resources after inspection. Production cutover requires a separate approved plan that prevents dual Weixin receivers and preserves cursors.
 
-1. Use a disposable empty PostgreSQL16+pgvector database. Do not point to production. Provision the same four least-privilege NOLOGIN roles from the repository's initial migration (`yaoyao_app`, `yaoyao_readonly`, `yaoyao_migrate`, `yaoyao_breakglass`) on a fresh cluster; role passwords are not pg_dump objects.
-2. Decrypt into a new private directory and verify the receipt. Inspect the custom-format archive with `pg_restore --list`.
-3. Restore into that empty database with compatible pg_restore; preserve roles/grants/functions/RLS and migration checksums. Never replace a live database to test a backup.
-4. Compare business-table row counts and canonical hashes, migrations, sequence values, current preferences, recent-life and photo reservations, and account/Weixin state. Prove the app role still has RLS. Store only counts/digests in the public acceptance report.
-5. Verify runtime key/reference/config presence privately before reconnecting services. Start exactly one receiver only after an approved cutover; never run a restored clone with the real Weixin token during a drill.
+Status this release: automated local crypto/protocol/namespace/retention/snapshot tests; real US write, key escrow and isolated production-data restore are pending deployment approval. Image generation/mobile receipt also remain deferred until credit is replenished.
 
-Successful crypto tests prove this envelope's checks, not arbitrary production recovery or successful offsite storage. 009D acceptance uses a real dump restored into a disposable database and reports that scope explicitly.
+## Ready-to-install timer hook
 
-Primitive reference: https://nodejs.org/download/release/v24.16.0/docs/api/crypto.html
+`deploy/vps-lite/offsite/backup-override.conf` adds ExecStartPost to the existing `yaoyao-backup.service`, with a finite timeout and short-lived backup process limits. It does not add another timer or change API/proxy limits. Its private JSON needs `dumpDirectory`, `workspace` (existing0700), `releaseFile`, `apiEnv`, `weixinAuth`, `reference`, `keyFile`, `repositoryConfig`, `keyEscrowConfirmed:true`; `applyRetention` defaults false. It uses only explicitly named paths and the newest promoted dump in the dedicated dump directory; stale dump fails. Release/config fingerprints must remain stable through capture. Failed encrypted runs count toward a128MiB spool cap and need assessed cleanup; successful runs keep private receipts but remove local duplicate ciphertext. Receipt directories contain no plaintext credentials.
+
+`node restore-drill.mjs --config PRIVATE_DRILL_JSON` automates authenticated extraction and a fresh socket-only PG cluster using `pgBin`, `workspace`, `archive`, `keyFile` and optional `expectedFingerprint`/`keepWorkspace`. It stops the cluster and removes only its own fresh tree by default. Requires local PostgreSQL16 binaries plus vector/citext extensions; do not run as root. It records table counts and migration/policy/sequence metadata. It explicitly reports `contentDigestsCompared:false`; a real source baseline, owner isolation checks and data-level comparison remain required before claiming disaster recovery. Local2026-10-26 synthetic drill restored28tables/12rows; no production backup or real US storage was used.

@@ -40,3 +40,15 @@ describe('009E Weixin encrypted image protocol',()=>{
  it('requires HTTP 200 and download param, without retrying paid generation',async()=>{const post=vi.fn().mockResolvedValue({upload_param:'opaque'});await expect(uploadWeixinImage({post,credentials},png,vi.fn().mockResolvedValue(new Response('',{status:200})))).rejects.toThrow('PHOTO_UPLOAD_FAILED');});
  it('sends exactly one image item with stable id and base64 of ASCII hex AES key',async()=>{const f=vi.fn().mockResolvedValue(new Response('{}')),client=new WeixinClient(credentials,f);await client.sendImage('key','context',{encryptQueryParam:'download',aesKey:'a'.repeat(32),ciphertextSize:80});const body=JSON.parse(f.mock.calls[0][1].body);expect(body.msg.client_id).toBe('yaoyao-photo-key');expect(body.msg.to_user_id).toBe('peer');expect(body.msg.context_token).toBe('context');expect(body.msg.item_list).toHaveLength(1);expect(body.msg.item_list[0].type).toBe(2);expect(Buffer.from(body.msg.item_list[0].image_item.media.aes_key,'base64').toString()).toBe('a'.repeat(32));});
 });
+
+describe('010C bounded photo failure diagnostics',()=>{
+ it.each([[429,'insufficient_quota','PHOTO_CREDIT_EXHAUSTED'],[429,'rate_limit_exceeded','PHOTO_RATE_LIMITED'],[401,'secret','PHOTO_AUTH_FAILED'],[403,'credit_balance_exhausted','PHOTO_CREDIT_EXHAUSTED'],[500,'secret','PHOTO_PROVIDER_FAILED']])('classifies HTTP %s without retaining provider text',async(status,code,expected)=>{
+  const f=vi.fn().mockResolvedValue(new Response(JSON.stringify({error:{code,message:'PRIVATE DIAGNOSTIC'}}),{status:Number(status)}));await expect(new OpenAIImageProvider('private-key','gpt-image-2.5-sunburst',f).generate('自拍',png)).rejects.toThrow(String(expected));expect(f).toHaveBeenCalledTimes(1);
+ });
+ it('bounds error body and keeps generic rate-limited result',async()=>{const f=vi.fn().mockResolvedValue(new Response('X'.repeat(20000),{status:429}));await expect(new OpenAIImageProvider('key','gpt-image-2.5-sunburst',f).generate('自拍',png)).rejects.toThrow('PHOTO_RATE_LIMITED');});
+ it('persists only a finite failure code and never regenerates failed replay',async()=>{
+  const {PhotoProviderError}=await import('@yaoyao/infrastructure');const d=fixture();vi.mocked(d.generate).mockRejectedValue(new PhotoProviderError('PHOTO_CREDIT_EXHAUSTED'));expect(await prepareWeixinPhoto(row,d)).toContain('余额');expect(d.jobs.save).toHaveBeenCalledWith(row,'failed',null,null,'PHOTO_CREDIT_EXHAUSTED');
+  const replay=fixture({state:'failed',artifact:null,media:null,failure_code:'PHOTO_CREDIT_EXHAUSTED'},false);expect(await prepareWeixinPhoto(row,replay)).toContain('余额');expect(replay.generate).not.toHaveBeenCalled();
+ });
+ it('status and help require exact standalone commands',async()=>{const {photoControl,PHOTO_HELP}=await import('@yaoyao/application');expect(photoControl('照片状态')).toBe('status');expect(photoControl('照片帮助')).toBe('help');for(const t of ['他说照片状态','照片状态\n发张自拍','照片状态是什么'])expect(photoControl(t)).toBeNull();expect(PHOTO_HELP).toContain('接口接受不等于手机已收到');});
+});

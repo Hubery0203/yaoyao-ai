@@ -1,3 +1,4 @@
+import {createVoiceDependencies,prepareWeixinVoice,voiceConfigured} from './voice-delivery.js';
 import {createPhotoDependencies,prepareWeixinPhoto} from './photo-delivery.js';
 /** One personal Weixin channel; the existing Core remains the conversation authority. */
 import {Inject,Injectable,Optional,type OnModuleInit} from '@nestjs/common';
@@ -6,10 +7,10 @@ import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {TRANSACTION_MANAGER,isOutreachCommandText,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
+import {TRANSACTION_MANAGER,voiceCommand,photoControl,PHOTO_HELP,isOutreachCommandText,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
-import {loadConfig,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
+import {loadConfig,WeixinVoiceStore,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
 import {LiteRuntimeService} from './lite-runtime.service.js';
 const sleep=(ms:number)=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
 export async function readWeixinCredentials(path:string):Promise<WeixinCredentials>{
@@ -23,7 +24,7 @@ export async function readWeixinCredentials(path:string):Promise<WeixinCredentia
   return {base:c.base,token:c.token,botId:c.botId,ownerId:c.ownerId};
  }finally{await file.close();}
 }
-export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,'update'>&Partial<Pick<WeixinStore,'beginSend'>>,client:Pick<WeixinClient,'send'>,converse:(userId:string,text:string,key:string)=>Promise<string>):Promise<void>{
+export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,'update'>&Partial<Pick<WeixinStore,'beginSend'>>,client:Pick<WeixinClient,'send'>,converse:(userId:string,text:string,key:string)=>Promise<string>,prepare?:(reply:string)=>Promise<void>):Promise<void>{
  if(['uncertain','failed'].includes(row.stage)||new Date(row.retry_at).getTime()>Date.now())return;
  let reply=row.reply;
  if(!reply){
@@ -31,6 +32,7 @@ export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,
   try{reply=await converse(row.user_id,row.turn_text??row.text,'weixin-'+row.message_key);await store.update(row.message_key,'ready',{reply});}
   catch{await store.update(row.message_key,row.attempts>=2?'failed':'pending',{error:'GENERATION_FAILED',delay:Math.min(60000,5000*2**row.attempts)});return;}
  }
+ if(prepare){try{await prepare(reply);}catch{await store.update(row.message_key,row.attempts>=5?'failed':'ready',{error:'VOICE_PREPARATION_FAILED',delay:5000,attempt:true});return;}}
  if(store.beginSend){if(!await store.beginSend(row.message_key))return;}else await store.update(row.message_key,'sending',{attempt:true});
  try{
   const text=reply.length>4000?reply.slice(0,3975)+'…（完整回复见网页）':reply;
@@ -39,6 +41,7 @@ export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,
  }catch(error){
   const code=error instanceof WeixinError?error.code:'SEND_RESULT_UNKNOWN';
   // Explicit rejections did not deliver. Transport failures may have delivered.
+  if(code==='DELIVERY_STOPPED'){await store.update(row.message_key,'ready',{error:code,delay:5000});return;}
   if(['AUTH_EXPIRED','RATE_LIMITED','API_REJECTED'].includes(code)){
    await store.update(row.message_key,row.attempts>=4?'failed':'ready',{error:code,delay:Math.min(60000,5000*2**Math.min(row.attempts,4))});
    if(code==='AUTH_EXPIRED')throw error;
@@ -104,17 +107,23 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
     try{
     const photo=photoRequest(row.turn_text??row.text)!==null,dependencies=photo?createPhotoDependencies(this.config,store,client,this.photoAbort.signal):undefined;
     if(photo&&row.reply===PHOTO_CAPTION&&!dependencies){await store.update(row.message_key,'skipped',{error:'PHOTOS_DISABLED'});continue;}
+    let finalReply:string|undefined;const voiceJobs=new WeixinVoiceStore(store),voiceDeps=!photo?createVoiceDependencies(this.config,store,client,this.photoAbort.signal):undefined;
     const sender=photo?{send:async(key:string,context:string,text:string)=>{
      if(text!==PHOTO_CAPTION)return client.send(key,context,text);
      const job=await new WeixinPhotoStore(store).get(row);
      if(job?.state!=='uploaded'||!job.media)throw Error('PHOTO_MEDIA_MISSING');
      return client.sendImage(key,context,job.media);
-    }}:client;
+    }}:{send:async(key:string,context:string,text:string)=>{
+     const media=await voiceJobs.sendingMedia(row,finalReply??row.reply??text,!!voiceDeps);
+     return media?client.sendVoiceFile(key,context,media):client.send(key,context,text);
+    }};
     await processWeixinMessage(row,store,sender,async(userId,text,key)=>{
      if(photo){
       const reply=dependencies?await prepareWeixinPhoto(row,dependencies):'照片功能还没配置好，暂时不能发图。';
       return this.tx.runAsUser(userId as UserId,tx=>recordPhotoResponse(tx,{userId:userId as UserId,text,requestId:key,reply}));
      }
+     if(voiceCommand(text)!==null)return (await voiceJobs.command(row,this.config.VOICE_MAX_PER_24H,voiceConfigured(this.config)))!;
+     const photoCommand=photoControl(text);if(photoCommand==='help')return PHOTO_HELP;if(photoCommand==='status')return new WeixinPhotoStore(store).status(userId,this.config.PHOTO_MAX_PER_24H,this.config.PHOTOS_ENABLED==='1'&&!!this.config.OPENAI_IMAGE_API_KEY&&!!this.config.PHOTO_REFERENCE_FILE&&!!this.config.PHOTO_STORAGE_DIR);
      this.gate.registerOwner(userId);
      if(isOutreachCommandText(text)){const control=await store.outreachCommand(userId,text,row.message_key);if(control!==null)return control;}
      const companion=isCompanionCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinCompanionCommand(tx,{userId:userId as UserId,text,requestId:key})):null;
@@ -124,8 +133,9 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
      const result=await this.core.converse({userId:userId as UserId,text,requestId:key,traceId:randomUUID()});
      try{this.quality?.record(summarizeTurnQuality(result.trace));}catch{/* Telemetry cannot fail Core replay. */}
      try{this.performance?.record(summarizeTurnPerformance(result.trace),'weixin');}catch{/* Numeric telemetry only. */}
+     if(voiceDeps)await voiceJobs.register(row,result.response);
      return result.response;
-    });
+    },!photo?async reply=>{finalReply=reply;if(voiceDeps)await prepareWeixinVoice(row,reply,voiceDeps);}:undefined);
     // Make accepted outreach visible before an immediate answer enters Core history.
     if(row.origin==='proactive')this.lastHistory=0;
     }finally{this.gate.release();}

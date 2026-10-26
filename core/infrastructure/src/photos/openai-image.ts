@@ -12,7 +12,13 @@ export class OpenAIImageProvider {
   form.set('image',new Blob([new Uint8Array(reference)],{type:mime}),'reference.'+(mime==='image/png'?'png':'jpg'));
   let response:Response;
   try{response=await this.fetcher('https://api.openai.com/v1/images/edits',{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+this.key},body:form,signal:signal?AbortSignal.any([signal,AbortSignal.timeout(120000)]):AbortSignal.timeout(120000)});}catch{throw new PhotoProviderError('PHOTO_RESULT_UNKNOWN');}
-  if(!response.ok){await response.body?.cancel();throw new PhotoProviderError(response.status===400?'PHOTO_REJECTED':response.status===401||response.status===403?'PHOTO_AUTH_FAILED':'PHOTO_PROVIDER_FAILED');}
+  if(!response.ok){
+   // Consume at most16KiB to classify documented/observed codes; never retain diagnostics.
+   let code='';const reader=response.body?.getReader(),chunks:Uint8Array[]=[];let length=0;
+   if(reader)try{while(true){const r=await reader.read();if(r.done)break;length+=r.value.length;if(length>16384)break;chunks.push(r.value);}if(length<=16384){const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(typeof body?.error?.code==='string')code=body.error.code;}}catch{/* Classification must not expose or replace an HTTP failure. */}finally{await reader.cancel().catch(()=>{});}
+   const credit=['insufficient_quota','credit_balance_exhausted','billing_hard_limit_reached'].includes(code);
+   throw new PhotoProviderError(credit&&[400,403,429].includes(response.status)?'PHOTO_CREDIT_EXHAUSTED':response.status===429?'PHOTO_RATE_LIMITED':response.status===400?'PHOTO_REJECTED':response.status===401||response.status===403?'PHOTO_AUTH_FAILED':'PHOTO_PROVIDER_FAILED');
+  }
   if(!response.body)throw new PhotoProviderError('PHOTO_EMPTY_RESPONSE');
   const reader=response.body.getReader(),chunks:Uint8Array[]=[];let length=0;
   try{while(true){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>6*1024*1024)throw new PhotoProviderError('PHOTO_RESPONSE_TOO_LARGE');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}

@@ -26,4 +26,16 @@ describe.skipIf(!docker)('009E real PostgreSQL photo reservations, channel scope
  it('photo scenes cannot become long-term facts or recent-life records',async()=>{const text='照片：我明天要面试';await manager.runAsUser(me.userId as UserId,tx=>recordPhotoResponse(tx,{userId:me.userId as UserId,text,requestId:'photo-fiction',reply:PHOTO_CAPTION}));for(let i=0;i<10;i++){if(await runContinuityOnce(manager,me.userId as UserId)==='idle')break;}const memories=await manager.runAsUser(me.userId as UserId,tx=>tx.memories.listOwned(me.userId as UserId,{status:'CONSOLIDATED',limit:100}));expect(memories).toHaveLength(0);expect((await ctx.db.adminPool.query('SELECT * FROM life_events WHERE user_id=$1',[me.userId])).rows).toHaveLength(0);await expect(manager.runAsUser(me.userId as UserId,tx=>recordPhotoResponse(tx,{userId:me.userId as UserId,text:'照片：另一个场景',requestId:'photo-fiction',reply:PHOTO_CAPTION}))).rejects.toThrow();});
  it('owner can skip uncertain photos through Weixin without a website or another paid call',async()=>{const row=await add(11);await jobs.reserve(row,3);await jobs.save(row,'uploaded','a'.repeat(64),media);await store.update(row.message_key,'uncertain',{reply:PHOTO_CAPTION});await store.ingest([incoming(12,'跳过照片')],'skip-cursor');expect((await ctx.db.adminPool.query('SELECT stage FROM weixin_messages WHERE message_key=$1',[row.message_key])).rows[0].stage).toBe('skipped');const next=(await store.claimBatch())!;expect(next.reply).toContain('已跳过');});
  it('cancellation received during generation prevents final image delivery',async()=>{const row=await add(13);await jobs.reserve(row,3);await store.update(row.message_key,'generating');await store.ingest([incoming(14,'取消回复')],'cancel-cursor');await jobs.save(row,'uploaded','a'.repeat(64),media);await store.update(row.message_key,'ready',{reply:PHOTO_CAPTION});expect(await store.beginSend(row.message_key)).toBe(false);});
+ it('010C failure code and safe quota status survive receiver reopen; owner isolated',async()=>{
+  const row=await add(21);await jobs.reserve(row,3);await jobs.save(row,'failed',null,null,'PHOTO_CREDIT_EXHAUSTED');
+  await store.close();store=new WeixinStore(ctx.db.appPool,credentials,ctx.db.connectionStringFor('yaoyao_app',APP_PASSWORD));await store.open();jobs=new WeixinPhotoStore(store);
+  expect((await jobs.get(row))?.failure_code).toBe('PHOTO_CREDIT_EXHAUSTED');const status=await jobs.status(me.userId,3,true);expect(status).toContain('1/3');expect(status).toContain('余额');expect(status).not.toContain(credentials.token);await expect(jobs.status(other.userId,3,true)).rejects.toThrow('CHANNEL_NOT_OWNED');
+  expect((await ctx.db.appPool.query('SELECT failure_code FROM weixin_photos')).rows).toHaveLength(0);
+ });
+ it('010C photo state query is isolated from ordinary burst and masks media',async()=>{
+  const row=await add(22);await jobs.reserve(row,3);await jobs.save(row,'uploaded','a'.repeat(64),media);await store.update(row.message_key,'accepted');
+  const status=await jobs.status(me.userId,3,true);expect(status).toContain('非手机送达确认');expect(status).not.toContain(media.encryptQueryParam);expect(status).not.toContain(media.aesKey);
+  await store.ingest([incoming(23,'照片状态'),incoming(24,'我回来了')],'status-burst');const command=(await store.claimBatch())!;expect(command.text).toBe('照片状态');expect(command.batch_key).toBeNull();
+ });
+
 });
