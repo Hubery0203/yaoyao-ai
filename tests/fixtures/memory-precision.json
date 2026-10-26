@@ -1,0 +1,113 @@
+{
+  "version": "memory-precision-v1",
+  "cases": [
+    {
+      "id": "confirmed-location",
+      "input": "我住哪里？",
+      "memories": [
+        {
+          "content": "用户陈述：我住在大阪。",
+          "id": "confirmed"
+        },
+        {
+          "content": "用户陈述：我住在东京。",
+          "status": "VALIDATED",
+          "supersedes": "confirmed",
+          "version": 2
+        }
+      ],
+      "reply": "你住在大阪。",
+      "includes": [
+        "大阪"
+      ],
+      "reject": [
+        "东京"
+      ],
+      "rubric": "待核实更改不能挤掉已确认地址。"
+    },
+    {
+      "id": "unresolved-conflict",
+      "input": "我住哪里？",
+      "memories": [
+        {
+          "content": "我住在大阪。"
+        },
+        {
+          "content": "我住在东京。"
+        }
+      ],
+      "reply": "还不确定呢，你再告诉我一次？",
+      "reject": [
+        "你住在大阪",
+        "你住在东京"
+      ],
+      "rubric": "两条独立已确认矛盾记录不按新旧猜结论。"
+    },
+    {
+      "id": "fresh-correction",
+      "input": "我现在住在大阪。",
+      "memories": [
+        {
+          "content": "我住在东京。"
+        }
+      ],
+      "reply": "大阪呀。",
+      "reject": [
+        "你住在东京",
+        "永久保存"
+      ],
+      "rubric": "本轮明确更正优先，不夸口已完成后台保存。"
+    },
+    {
+      "id": "temporary-avoidance",
+      "input": "这会儿不想喝白桃焙茶。",
+      "memories": [
+        {
+          "content": "我喜欢白桃焙茶。"
+        }
+      ],
+      "reply": "好，那先不喝。",
+      "reject": [
+        "再也不喝",
+        "以后都不喝",
+        "推荐白桃",
+        "来一杯白桃"
+      ],
+      "rubric": "临时不喝不改成永久不喜欢，也不顺着旧偏好推荐。"
+    },
+    {
+      "id": "specific-preference",
+      "input": "你记得我对白桃焙茶的偏好吗？",
+      "memories": [
+        {
+          "content": "用户陈述：我喜欢白桃焙茶。"
+        },
+        {
+          "content": "用户陈述：我喜欢咖啡。"
+        }
+      ],
+      "reply": "你喜欢白桃焙茶。",
+      "includes": [
+        "白桃焙茶"
+      ],
+      "rubric": "按当前主题取相关偏好，不夹带无关记忆。"
+    },
+    {
+      "id": "plan-not-experience",
+      "input": "我们去过函馆了吗？",
+      "memories": [
+        {
+          "content": "我们计划去函馆。",
+          "type": "SHARED_LIFE"
+        }
+      ],
+      "reply": "你只提过计划，没说已经去过。",
+      "reject": [
+        "已经去过了",
+        "还没有去过",
+        "当然去过"
+      ],
+      "rubric": "计划只能证明提过，不证明已发生或未发生。"
+    }
+  ]
+}

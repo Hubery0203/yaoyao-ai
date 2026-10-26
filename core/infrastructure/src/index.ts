@@ -18,6 +18,7 @@ export {
   type MemoryRetrievalConfig,
   // Ranking pure functions (unit-testable; also used by the adapter).
   buildQueryText,
+  memorySearchTerms,
   DEFAULT_RANKING_WEIGHTS,
   dropNearDuplicates,
   dedupeSupersedesChains,

@@ -7,7 +7,7 @@ interface ObservedFact { readonly candidate:MemoryCandidate; readonly temporary:
 /** Literal user evidence only. The temporary projection is never a write candidate. */
 function observedFacts(text:string):ObservedFact[] {
   const exact=extractExplicitMemories(text).filter(c=>c.kind==='fact').map(candidate=>({candidate,temporary:false}));
-  const temporary=text.trim().match(/^我(?:今天|今晚|这次|暂时)(不喝|不吃|不想喝|不想吃)([^，,。！？!?]{1,80})[。！!]?$/u);
+  const temporary=text.trim().match(/^(?:我)?(?:今天|今晚|这次|这一次|暂时|这会儿|此刻)(不喝|不吃|不想喝|不想吃)([^，,。！？!?]{1,80})[。！!]?$/u);
   if(temporary){
     const verb=temporary[1].replace('不想','不');
     return extractExplicitMemories('我'+verb+temporary[2]).map(candidate=>({candidate,temporary:true}));

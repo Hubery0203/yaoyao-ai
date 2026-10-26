@@ -9,6 +9,7 @@ export {
 } from "./retrieval.js";
 export {
   buildQueryText,
+  memorySearchTerms,
   DEFAULT_RANKING_WEIGHTS,
   dropNearDuplicates,
   dedupeSupersedesChains,
