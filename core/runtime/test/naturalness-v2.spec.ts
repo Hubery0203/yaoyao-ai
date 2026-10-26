@@ -2,7 +2,7 @@ import {describe,it,expect,vi} from 'vitest';
 import {asProposal} from '@yaoyao/application';
 import {EmotionVector} from '@yaoyao/domain';
 import {AIRouter,ConversationOrchestrator,summarizeTurnQuality} from '@yaoyao/runtime';
-import {conversationStyle} from '../src/conversation/style.js';
+import {conversationStyle,dialogueStyleFailure} from '../src/conversation/style.js';
 import {naturalnessFailure,renderTurnVariety} from '../src/conversation/naturalness.js';
 
 describe('naturalness v2: sharing without stock listening tails',()=>{
@@ -42,6 +42,13 @@ describe('naturalness v2: sharing without stock listening tails',()=>{
   expect(guide).toContain('没有图片内容不声称看见照片');
   expect(renderTurnVariety('抱抱你',[])).not.toContain('这趟走得值');
   expect(renderTurnVariety('详细解释二分查找',[])).toBe('');
+ });
+ it.each(['我是AI，叫遥遥。怎么突然想到问这个？','我是AI。怎么突然想到问这个。'])('keeps identity answers direct: %s',response=>{
+  expect(dialogueStyleFailure(response,'你是AI还是真人？')).toBe('dialogue: unwanted question');
+ });
+ it('keeps truthful identity answers and unrelated questions intact',()=>{
+  expect(dialogueStyleFailure('我是AI，叫遥遥。','你是AI还是真人？')).toBeNull();
+  expect(dialogueStyleFailure('你想用哪种接口？','帮我选择语音接口')).toBeNull();
  });
  it('repairs the full candidate once and records no private dialogue',async()=>{
   const proposal=(text:string)=>({response:asProposal(text),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})});
