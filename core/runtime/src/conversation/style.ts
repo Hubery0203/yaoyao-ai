@@ -29,11 +29,19 @@ export function resolvedShortChoice(input:string,recent:readonly string[]):boole
  const last=recent.filter(t=>t.startsWith('YaoYao: ')).at(-1)??'',answer=unquotedText(input).trim().replace(/[吧呀啊呢。！!\s]+$/u,'');
  return input.length<=12&&answer.length>0&&!/[？?]|帮我|请问|为什么|怎么/u.test(input)&&/[？?]/u.test(last)&&(last.includes(answer)||/^(?:都行|随便|都可以|前者|后者|第[一二123]个)$/u.test(answer));
 }
+/** Explicit information/writing requests must not inherit casual-sharing brevity. */
+export function isDialogueTask(input:string):boolean {
+ const text=unquotedText(input);
+ return /[？?]|为什么|怎么办|怎么做|如何|帮我|请问|求助|(?:解释|分析|翻译|改写)(?:一下|下|这|那|一段)|(?:给我|帮忙)(?:写|查|算|列|分析)|(?:请|麻烦)(?:你)?(?:写|查|算|列|解释|分析)/u.test(text);
+}
+export function isDirectNatureQuestion(input:string):boolean {
+ return /^(?:遥遥[，, ]*)?你(?:到底|究竟)?(?:是|是不是)(?:一个|个)?(?:AI|人工智能|真人|机器人)(?:(?:还是|或)(?:AI|人工智能|真人|机器人))?(?:吗|呢)?[？?。！!]*$/iu.test(input.trim());
+}
 export function conversationStyle(input:string):ConversationStyle {
   const text=unquotedText(input).trim();
   const topicShift=/(?:^|[，,。！!；;\n])\s*(?:换个话题|换一个话题|换话题|先不聊这个|不聊这个了|这事先放一边|说点别的|对了[，,])/u.test(text);
   const resumeTopic=/(?:继续|接着)(?:刚才|之前|上次)(?:的)?|回到(?:刚才|之前|上次)|刚才(?:那个|的问题|说的).{0,12}(?:继续|接着)/u.test(text);
-  const quiet=/(?:^|[，,。！!；;\n])\s*(?:(?:我)?(?:现在)?(?:只想|想要|想))?(?:安静一会|安静待会|静一静|你陪我待会|陪我待一会|陪我安静)|(?:别|不要|不用)(?:再)?(?:分析了|安慰了)|(?:只|就)(?:陪我|听我说)/u.test(text);
+  const quiet=/(?:^|[，,。！!；;\n])\s*(?:(?:我)?(?:现在|今天|今晚)?(?:只想|想要|想))?(?:安静一会|安静待会|静一静|你陪我待会|陪我待一会|陪我安静)|(?:别|不要|不用)(?:再)?(?:分析了|安慰了)|(?:只|就)(?:陪我|听我说)/u.test(text);
   const noQuestions=/(?:别|不要|不用|不必)(?:再|一直|老是)?(?:问(?:我)?(?:了|问题|任何问题)?|追问|提问|反问)(?=$|[，,。！!；;\s])|(?:别|不要)(?:再)?问了/u.test(text);
   const noAdvice=/(?:别|不要|不用|不必)(?:再)?(?:给我|给)?(?:建议|方案|分析)|(?:只想|只是)(?:吐槽|说说)/u.test(text);
   const brief=/(?:简短|简洁|短一点|少说点|一句话|别长篇|不要长篇|不用展开)/u.test(text);
@@ -44,8 +52,9 @@ export function conversationStyle(input:string):ConversationStyle {
   const disclosure=!directedAffection&&!/[？?]|为什么|怎么|请问/u.test(text)&&(sharedPlan||/^我(?:现在|最近|今天|今晚|一直)?(?:不再喜欢|不喜欢|喜欢|爱喝|不再喝|不喝|不吃|住在|叫|刚吃了|刚喝了)[^，,。！？!?]{1,100}[。！!]?$/u.test(text));
   const farewell=/^(?:我)?(?:先去忙(?:了)?|去忙了|先忙了|回头聊|待会聊|下次聊|拜拜|走啦|我出门了)[。！!～~\s]*$/u.test(text);
   const burst=text.split(/\n+/u).map(t=>t.trim()).filter(Boolean);
-  const burstShare=!detailed&&burst.length>1&&burst.length<=10&&burst.every(t=>t.length<=100)&&burst.some(line=>/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个)/u.test(line))&&!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text);
-  const casualShare=burstShare||!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text)&&text.length<=100&&/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个).{1,80}$/u.test(text);
+  const task=isDialogueTask(input);
+  const burstShare=!task&&!detailed&&burst.length>1&&burst.length<=10&&burst.every(t=>t.length<=100)&&burst.some(line=>/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个)/u.test(line))&&!/[？?]|为什么|怎么办|怎么做|帮我|请问/u.test(text);
+  const casualShare=burstShare||!task&&text.length<=100&&/^(?:我(?:今天|刚刚|刚|终于|最近)|今天|刚刚|刚才|路上|下班|外面|这家|这个).{1,80}$/u.test(text);
   const styleFeedback=/(?:太像|不像|别像|不要像).{0,8}(?:AI|人工智能|机器人|客服)|(?:说话|聊天|回答).{0,8}(?:自然点|自然一点|像真人)|(?:别|不要)(?:这么|那么)?(?:机械|官方|模板化)|废话太多|不要后面的解释|别解释了/iu.test(text);
   const bedtimeInvite=/^(?:我们)?(?:一起)?睡(?:觉)?(?:吧|了)[。！!～~]*$/u.test(text);
   const briefAffection=!detailed&&!/(?:不|没有那么|没那么|不是很|不太)(?:爱|喜欢|想)你/u.test(text)&&!/(?:为什么|怎么|解释|分析|帮我|请问|写个|写一段)/u.test(text)&&(bedtimeInvite||/(?:宝贝|我爱你|喜欢你(?!推荐|的|家)|我想你|亲亲|抱抱|晚安)/u.test(text));
@@ -76,7 +85,7 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
     ...(style.acknowledgment?['这是简单招呼或回应：自然接一句即可，不重讲上一轮建议，不另起一个问题。']:[]),
     ...(style.disclosure?['这是个人分享：接住这个内容即可，不自动科普、做计划或返回旧问题。']:[]),
     ...(style.brief?['用户明确要求简短：优先一句直接回答；必要的事实边界仍保留。']:[]),
-    ...(style.detailed?['用户明确需要详细内容：直接回答求助，不先安排用户休息。给足所需信息，结构按任务需要；区分量级与精确上界，不把近似复杂度说成精确次数。二分查找可用每轮减半解释O(log n)；最后候选仍可能需要比较，不能直接把ceil(log2 n)称为所有实现的最坏比较次数。没有说明具体实现和计数口径时只讲量级。不能套用日常短回复。']:[]),
+    ...(style.detailed?['用户明确需要详细内容：直接回答求助，不先安排用户休息。给足所需信息，结构按任务需要；区分量级与精确上界，不把近似复杂度说成精确次数。二分查找可用每轮减半解释O(log n)；最后候选仍可能需要比较，不能直接把ceil(log2 n)称为所有实现的最坏比较次数。没有说明具体实现和计数口径时只讲量级：不要给出ceil、⌈⌉等精确取整次数公式，也不要把轮数与元素比较次数混用。不能套用日常短回复。']:[]),
     ...(style.styleFeedback?['用户正在反馈表达太像 AI：简短承接，立刻自然地聊，不列改进清单、不承诺“我会调整我的风格”。']:[]),
   ].join('\n');
 }
@@ -84,6 +93,7 @@ export function renderNaturalDialogue(style:ConversationStyle):string {
 /** Only explicit requests and recognizable old-topic hooks become repair gates. */
 export function dialogueStyleFailure(response:string,input:string):string|null {
   const style=conversationStyle(input),text=unquotedText(response);
+  if(isDirectNatureQuestion(input)&&/[？?]|(?:怎么|为什么)(?:突然|想起|想到).{0,8}问/u.test(text))return 'dialogue: unwanted question';
   // Narrow observed offline self-report forms; quotations, negations and hypotheticals are data.
   const offline=text.split(/[，,。！？!?；;\n]/u).some(clause=>
     !/(?:如果|假如|要是|比如|不会|没有|不是|不能|并未|没在|没去)/u.test(clause)&&
