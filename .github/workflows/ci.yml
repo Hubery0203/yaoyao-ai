@@ -42,6 +42,12 @@ jobs:
       - run: node scripts/evaluate-experience.mjs --mode mock --out experience-report.json
       - run: node scripts/evaluate-experience.mjs --mode mock --fixtures tests/fixtures/experience-009.json --max-calls 30 --out experience-009-report.json
       - run: node scripts/evaluate-experience.mjs --mode mock --fixtures tests/fixtures/experience-010.json --max-calls 24 --out experience-010-report.json
+      - run: node scripts/evaluate-experience.mjs --mode mock --fixtures tests/fixtures/naturalness-v2.json --max-turns 8 --max-calls 16 --out naturalness-v2-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: naturalness-v2-report
+          path: naturalness-v2-report.json
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: experience-010-quality-report
