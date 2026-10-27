@@ -39,3 +39,5 @@
 协议依据：[腾讯原始图片下载实现](https://github.com/Tencent/openclaw-weixin/blob/main/src/media/media-download.ts)、[腾讯解密与密钥格式](https://github.com/Tencent/openclaw-weixin/blob/main/src/cdn/pic-decrypt.ts)、[MiniMax官方看图MCP](https://platform.minimax.cn/docs/guides/token-plan-mcp-guide)、[官方请求实现](https://github.com/MiniMax-AI/MiniMax-Coding-Plan-MCP/blob/main/minimax_mcp/server.py)。
 
 真实合成检查首轮3次中，普通描述和指令边界两次成功，单独读时间一次返回VISION_INVALID_RESPONSE。原记录不足以确定拒绝原因，不能宣称已修复或整轮通过。现已补充分支原因（空内容、类型、非JSON、长度、控制字符及不允许的回复等固定枚举），仅写入私有操作账本，不记录原始供应商返回、密钥、CDN地址或图片像素。新增离线用例确保09:30等正常OCR短答可通过；实际原因仍需另外获批后复核，不重置原3次账本。
+
+追加复核第1次已正确读出09:30，但回复带无关画面描述及评价，未认可语气。已将一般读字/时间/数量短问收紧为只给所问内容，不补开场确认、无关描述或评价；普通图片分享仍可自然接话。剩余最多1次已批请求用于最终复核，不因此扩大总额度。原第2次失败的历史根因仍未知。
