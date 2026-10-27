@@ -8,14 +8,17 @@ import {MiniMaxImageProvider,MINIMAX_PHOTO_PROMPT_VERSION} from '../core/infrast
 import {readPrivatePhoto,imageMime} from '../core/infrastructure/dist/photos/files.js';
 const arg=name=>{const i=process.argv.indexOf(name);return i<0?undefined:process.argv[i+1];};
 const live=process.argv.includes('--live'),referencePath=arg('--reference'),digest=arg('--sha256'),seed=Number(arg('--seed')??20261027),out=arg('--out');
-const scenes=['书桌旁的自然手机自拍，正面微笑，面部清晰','穿米色针织衫，在窗边自然微笑的半身自拍'];
+const caseId=arg('--case')??'all';
+if(!['all','desk','window'].includes(caseId))throw Error('UNKNOWN_PHOTO_CASE');
+const cases={desk:'书桌旁的自然手机自拍，轻微侧脸、轻轻微笑，面部清晰，不添加酒窝',window:'穿米色针织衫在窗边的自然半身自拍，保持原参考的轻微侧脸角度，闭嘴浅笑，脸颊平滑，不添加酒窝或凹陷'};
+const scenes=caseId==='all'?Object.values(cases):[cases[caseId]],maximumCalls=scenes.length;
 if(!referencePath||!digest||!Number.isSafeInteger(seed)||seed<0||seed>2147483647)throw Error('REFERENCE_HASH_AND_VALID_SEED_REQUIRED');
 const reference=await readPrivatePhoto(referencePath,digest),repo=fileURLToPath(new URL('..',import.meta.url));
 const tree=execFileSync('git',['rev-parse','HEAD^{tree}'],{cwd:repo,encoding:'utf8'}).trim();
 const clean=!execFileSync('git',['status','--porcelain'],{cwd:repo,encoding:'utf8'}).trim();
-const plan={version:'photo-identity-v1',promptVersion:MINIMAX_PHOTO_PROMPT_VERSION,tree,clean,referenceSHA256:digest,referenceBytes:reference.length,seed,aspectRatio:'3:4',scenes,maximumCalls:2,method:'Two candidate-only scenes, original reference bytes, one image each. Seed aids comparison, not an identity guarantee. Manual owner review required; no Weixin writes.'};
+const plan={version:'photo-identity-v2-no-dimples',promptVersion:MINIMAX_PHOTO_PROMPT_VERSION,tree,clean,referenceSHA256:digest,referenceBytes:reference.length,seed,aspectRatio:'3:4',caseId,scenes,maximumCalls,method:'At most two candidate-only scenes, original reference bytes, one image each. Seed aids comparison, not an identity guarantee. Manual owner review required; no Weixin writes.'};
 if(!live){console.log(JSON.stringify({...plan,mode:'dry-run',providerCalls:0}));process.exit(0);}
-if(!clean||arg('--max-calls')!=='2'||!out||!isAbsolute(out)||!process.env.MINIMAX_IMAGE_API_KEY||!['cn','international'].includes(process.env.MINIMAX_IMAGE_REGION))throw Error('EXPLICIT_LIVE_BUDGET_PRIVATE_KEY_REGION_OUTPUT_AND_CLEAN_TREE_REQUIRED');
+if(!clean||arg('--max-calls')!==String(maximumCalls)||!out||!isAbsolute(out)||!process.env.MINIMAX_IMAGE_API_KEY||!['cn','international'].includes(process.env.MINIMAX_IMAGE_REGION))throw Error('EXPLICIT_LIVE_BUDGET_PRIVATE_KEY_REGION_OUTPUT_AND_CLEAN_TREE_REQUIRED');
 await mkdir(out,{recursive:true,mode:0o700});const stat=await lstat(out);if(!stat.isDirectory()||stat.isSymbolicLink()||stat.mode&0o077)throw Error('PRIVATE_OUTPUT_DIRECTORY_REQUIRED');
 const provider=new MiniMaxImageProvider(process.env.MINIMAX_IMAGE_API_KEY,process.env.MINIMAX_IMAGE_REGION,'image-01',fetch,{seed});
 for(const scene of scenes)provider.validate(scene,reference);
@@ -24,7 +27,7 @@ const lock=await open(join(out,'run.lock'),'wx',0o600);await lock.writeFile(JSON
 const ledger={...plan,mode:'live',atUTC:new Date().toISOString(),attempts:[],ownerReview:'pending'};
 async function save(){const file=join(out,'ledger.tmp');const f=await open(file,'wx',0o600);try{await f.writeFile(JSON.stringify(ledger,null,2)+'\n');await f.sync();}finally{await f.close();}await rename(file,join(out,'ledger.json'));}
 for(const [index,scene]of scenes.entries()){
- if(ledger.attempts.length>=2)throw Error('IMAGE_BUDGET_EXHAUSTED');
+ if(ledger.attempts.length>=maximumCalls)throw Error('IMAGE_BUDGET_EXHAUSTED');
  const attempt={number:index+1,scene,state:'started',startedAtUTC:new Date().toISOString()};ledger.attempts.push(attempt);await save();
  try{
   const bytes=await provider.generate(scene,reference),mime=imageMime(bytes),file='candidate-'+(index+1)+(mime==='image/png'?'.png':'.jpg');

@@ -39,3 +39,9 @@ node scripts/evaluate-photo-identity.mjs --reference /absolute/private/original.
 所有测试均为固定数据或dry-run，尚无本轮真实图片。字节指纹只证明参考来源，不证明脸相同；提示词及构图只是待验证策略。MiniMax仍可能改变五官、年龄观感、发型、姿势或细节。官方参数未提供本实现可使用的强制锁脸开关，不能虚构face_weight参数。
 
 来源（2026-10-27核对）：[MiniMax图生图](https://platform.minimax.cn/docs/api-reference/image-generation-i2i)、[MiniMax文生图参数](https://platform.minimax.cn/docs/api-reference/image-generation-t2i)。接口支持人物参考、3:4、seed；相同seed和参数用于生成相近内容，不是身份一致性保证。
+
+## 本人反馈后的修订
+
+本人接受第1张书桌样本，不接受第2张窗边正脸，明确要求不要酒窝。原自拍仍是唯一身份来源，第1张仅用于审美反馈，不升格为参考。提示词版本reference-person-v3-no-dimples：轻微侧脸自拍、闭嘴浅笑、平滑脸颊、不添加酒窝/凹陷。不能把文字约束当作已修正真实图片。
+
+工具支持 --case window 单场景，dry-run默认仍无调用；真实运行必须 --max-calls 1、另行批准的单次费用额度及新的明确账本目录。原目录/锁/两条调用记录保持原样，绝不删锁重跑或复用已用完的2次额度。窗口样本先给本人看，未认可不部署。

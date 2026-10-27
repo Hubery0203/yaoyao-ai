@@ -16,7 +16,7 @@ describe('photo identity: source and request controls',()=>{
   const body=JSON.parse(fetcher.mock.calls[0][1].body);
   expect(body.subject_reference).toEqual([{type:'character',image_file:'data:image/png;base64,'+png.toString('base64')}]);
   expect(body.aspect_ratio).toBe('3:4');expect(body).not.toHaveProperty('seed');
-  expect(body.prompt).toContain('facial proportions');expect(body.prompt).not.toContain('late twenties');
+  expect(body.prompt).toContain('facial proportions');expect(body.prompt).toContain('no dimples');expect(body.prompt).toContain('slightly angled selfie');expect(body.prompt).not.toContain('late twenties');
   expect(body.prompt).toContain(JSON.stringify('穿毛衣在窗边微笑'));expect(body.prompt.length).toBeLessThanOrEqual(1500);
  });
  it('supports an explicit validation seed including zero, with no silent seed in ordinary requests',async()=>{
@@ -64,6 +64,8 @@ describe('photo identity operator checks',()=>{
    const plan=JSON.parse(execFileSync(process.execPath,args,{encoding:'utf8',env}));
    expect(plan).toMatchObject({mode:'dry-run',providerCalls:0,maximumCalls:2,referenceSHA256:hash,aspectRatio:'3:4'});
    expect(JSON.stringify(plan)).not.toContain(png.toString('base64'));
+   const windowPlan=JSON.parse(execFileSync(process.execPath,[...args,'--case','window'],{encoding:'utf8',env}));
+   expect(windowPlan).toMatchObject({maximumCalls:1,caseId:'window',providerCalls:0});expect(windowPlan.scenes).toHaveLength(1);expect(windowPlan.scenes[0]).toContain('不添加酒窝');
    expect(()=>execFileSync(process.execPath,[...args,'--live','--max-calls','2','--out',join(dir,'live')],{env,stdio:'pipe'})).toThrow();
    await expect(readFile(join(dir,'live/run.lock'))).rejects.toThrow();
   }finally{await rm(dir,{recursive:true,force:true});}
