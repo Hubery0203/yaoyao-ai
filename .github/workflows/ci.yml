@@ -143,6 +143,17 @@ jobs:
       # when package-lock and the deployed Linux dependency/runtime base are unchanged.
       - run: tar -czf yaoyao-linux-code.tar.gz -C release package.json package-lock.json core apps db deploy tools RELEASE.json
       - run: sha256sum yaoyao-linux-code.tar.gz > yaoyao-linux-code.sha256
+      # Only the new SILK WASM package; deployment must prove all other locked
+      # runtime dependencies match the retained base before using this overlay.
+      - run: tar -czf yaoyao-silk-runtime.tar.gz -C release node_modules/silk-wasm node_modules/.package-lock.json
+      - run: sha256sum yaoyao-silk-runtime.tar.gz > yaoyao-silk-runtime.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yaoyao-silk-runtime
+          path: |
+            yaoyao-silk-runtime.tar.gz
+            yaoyao-silk-runtime.sha256
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: yaoyao-linux-code

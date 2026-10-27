@@ -21,7 +21,7 @@ export interface ConversationTurn {
 
 export interface PersistMessageInput {
   /** Set only by trusted media adapters; image/OCR must not become asserted life facts. */
-  readonly attachment?: 'image';
+  readonly attachment?: 'image'|'voice';
   readonly userId: UserId;
   readonly yaoyaoId: YaoYaoId;
   readonly sessionId: string | null;

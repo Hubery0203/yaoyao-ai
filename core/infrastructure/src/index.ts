@@ -65,3 +65,9 @@ export * from './vision/image-input.js';
 export * from './vision/minimax-vision.js';
 export * from './weixin/incoming-image.js';
 export * from './weixin/vision-store.js';
+
+export {downloadEncryptedCdn,parseEncryptedCdnMedia,CdnMediaError,type EncryptedCdnMedia} from './weixin/cdn-download.js';
+export * from './asr/audio.js';
+export * from './asr/minimax-asr.js';
+export * from './weixin/incoming-audio.js';
+export * from './weixin/audio-store.js';

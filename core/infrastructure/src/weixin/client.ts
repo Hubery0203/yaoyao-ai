@@ -1,10 +1,11 @@
 import {validWeixinVoiceFile,type WeixinVoiceFile} from './voice-media.js';
 import {validWeixinImage,type WeixinImage} from './media.js';
 import {parseIncomingImage,type IncomingImage} from './incoming-image.js';
-import {INCOMING_IMAGE_TEXT} from '@yaoyao/application';
+import {parseIncomingAudio,type IncomingAudio} from './incoming-audio.js';
+import {INCOMING_AUDIO_TEXT,INCOMING_IMAGE_TEXT} from '@yaoyao/application';
 import {randomBytes,createHash} from 'node:crypto';
 export interface WeixinCredentials {base:string;token:string;botId:string;ownerId:string}
-export interface IncomingText {key:string;text:string;contextToken:string;time:number;image?:IncomingImage}
+export interface IncomingText {key:string;text:string;contextToken:string;time:number;image?:IncomingImage;audio?:IncomingAudio}
 export class WeixinError extends Error {constructor(readonly code:string){super(code);}}
 export function trustedWeixinBase(value:string):string {
  const u=new URL(value);
@@ -40,6 +41,11 @@ export function extractText(value:unknown,c:WeixinCredentials):IncomingText|null
 export function extractIncoming(value:unknown,c:WeixinCredentials):IncomingText|null {
  const text=extractText(value,c);if(text)return text;
  if(!value||typeof value!=='object')return null;const m=value as Record<string,unknown>;
+ if(Array.isArray(m.item_list)&&m.item_list.some(i=>i?.type===3)&&!m.item_list.some(i=>i?.type===2)){
+  if(m.item_list.some(i=>!i||typeof i!=='object'||i.is_completed===false))return null;
+  const envelope=extractText({...m,item_list:[{type:1,text_item:{text:INCOMING_AUDIO_TEXT}}]},c);if(!envelope)return null;
+  return {...envelope,audio:m.item_list.length===1?parseIncomingAudio(m.item_list[0].voice_item):{status:'unsupported'}};
+ }
  if(!Array.isArray(m.item_list)||!m.item_list.some(i=>i?.type===2)||m.item_list.some(i=>!i||typeof i!=='object'||i.is_completed===false))return null;
  const texts=m.item_list.filter(i=>i.type===1),images=m.item_list.filter(i=>i.type===2);
  const caption=texts.length===1&&typeof texts[0]?.text_item?.text==='string'?texts[0].text_item.text:'';

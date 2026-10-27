@@ -8,6 +8,8 @@
 import type { RuntimeTrace } from "../contracts/trace.js";
 
 export interface TurnInput {
+  /** Trusted transport provenance; speech transcripts are not automatically asserted memory. */
+  readonly attachment?: 'voice';
   readonly userId: string;
   readonly text: string;
   readonly traceId: string;

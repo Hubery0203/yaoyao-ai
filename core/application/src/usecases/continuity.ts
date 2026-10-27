@@ -25,10 +25,10 @@ export async function processContinuityJob(tx:PersistenceTransaction,userId:User
   const user=events.find(e=>e.event.type==="USER_MESSAGE" && e.event.correlationId===job.requestId);
   if(!assistant || !user || typeof user.event.payload.text!=="string") throw new Error("Incomplete continuity turn");
   const source=user.event.payload.text;
-  const image=user.event.payload.attachment==='image';
-  if(!image&&!isCompanionCommandText(source)&&photoRequest(source)===null)await recordLifeStatement(tx,userId,{text:source,occurredAt:user.event.occurredAt,sequence:user.aggregateSeq,timezone:typeof user.event.payload.timezone==="string"?user.event.payload.timezone:undefined});
+  const nonAssertedMedia=user.event.payload.attachment==='image'||user.event.payload.attachment==='voice';
+  if(!nonAssertedMedia&&!isCompanionCommandText(source)&&photoRequest(source)===null)await recordLifeStatement(tx,userId,{text:source,occurredAt:user.event.occurredAt,sequence:user.aggregateSeq,timezone:typeof user.event.payload.timezone==="string"?user.event.payload.timezone:undefined});
   const muted=tx.experience?await tx.experience.mutedSlots(userId):{};
-  const candidates=(image||isCompanionCommandText(source)||isMemoryCommandText(source)||photoRequest(source)!==null)?[]:proposed??extractExplicitMemories(source);
+  const candidates=(nonAssertedMedia||isCompanionCommandText(source)||isMemoryCommandText(source)||photoRequest(source)!==null)?[]:proposed??extractExplicitMemories(source);
   if(candidates.length>10) throw new Error("Too many candidates");
   const container=await tx.memoryContainers.findOwned(userId);
   const all=await tx.memories.listOwned(userId,{status:"CONSOLIDATED",limit:200});
