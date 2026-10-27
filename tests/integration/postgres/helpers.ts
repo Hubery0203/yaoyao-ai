@@ -1,3 +1,4 @@
+import {trackTestPoolShutdown} from './close-pool.js';
 /**
  * Testcontainers harness for Phase 3 persistence integration suites.
  *
@@ -89,6 +90,7 @@ export async function setupDatabase(): Promise<TestDatabase> {
     connectionString: connectionStringFor("postgres", SUPERUSER_PASSWORD),
     max: 5,
   });
+  const closeAdminPool=trackTestPoolShutdown(adminPool);
 
   const run = await applyMigrations(adminPool, MIGRATIONS_DIR, "test-harness");
   const applied = run.applied;
@@ -126,6 +128,7 @@ export async function setupDatabase(): Promise<TestDatabase> {
     connectionString: connectionStringFor("yaoyao_app", APP_PASSWORD),
     max: 10,
   });
+  const closeAppPool=trackTestPoolShutdown(appPool);
   const manager = new PostgresTransactionManager(appPool);
 
   return {
@@ -135,9 +138,8 @@ export async function setupDatabase(): Promise<TestDatabase> {
     manager,
     connectionStringFor,
     teardown: async () => {
-      await appPool.end().catch(() => undefined);
-      await adminPool.end().catch(() => undefined);
-      await container.stop().catch(() => undefined);
+      try{await Promise.all([closeAppPool(),closeAdminPool()]);}
+      finally{await container.stop();}
     },
   };
 }
