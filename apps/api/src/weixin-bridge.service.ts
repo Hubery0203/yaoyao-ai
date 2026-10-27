@@ -1,3 +1,4 @@
+import {createVisionDependencies,prepareWeixinVision,visionConfigured} from './vision-delivery.js';
 import {createVoiceDependencies,prepareWeixinVoice,voiceConfigured} from './voice-delivery.js';
 import {createPhotoDependencies,prepareWeixinPhoto,photoConfigured} from './photo-delivery.js';
 /** One personal Weixin channel; the existing Core remains the conversation authority. */
@@ -7,10 +8,10 @@ import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {TRANSACTION_MANAGER,voiceCommand,photoControl,PHOTO_HELP,isOutreachCommandText,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
+import {TRANSACTION_MANAGER,visionControl,VISION_HELP,incomingImageContext,recordIncomingImageResponse,voiceCommand,photoControl,PHOTO_HELP,isOutreachCommandText,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
-import {loadConfig,WeixinVoiceStore,WeixinClient,WeixinStore,WeixinError,extractText,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
+import {loadConfig,WeixinVisionStore,WeixinVoiceStore,WeixinClient,WeixinStore,WeixinError,extractIncoming,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
 import {LiteRuntimeService} from './lite-runtime.service.js';
 const sleep=(ms:number)=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
 export async function readWeixinCredentials(path:string):Promise<WeixinCredentials>{
@@ -50,7 +51,7 @@ export async function processWeixinMessage(row:WeixinRow,store:Pick<WeixinStore,
 }
 @Injectable()
 export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
- private readonly photoAbort=new AbortController();private readonly config=loadConfig();private store?:WeixinStore;private client?:WeixinClient;private running?:Promise<void>;private stopped=false;private lastPoll=0;private lastSchedule=0;private lastHistory=0;
+ private readonly mediaAbort=new AbortController();private readonly config=loadConfig();private store?:WeixinStore;private client?:WeixinClient;private running?:Promise<void>;private stopped=false;private lastPoll=0;private lastSchedule=0;private lastHistory=0;
  constructor(@Inject('YAOYAO_PG_POOL') private readonly pool:Pool,@Inject(CONVERSATION_ORCHESTRATOR) private readonly core:ConversationOrchestrator,@Inject(LiteRuntimeService) private readonly gate:LiteRuntimeService,
   @Inject(TRANSACTION_MANAGER)private readonly tx:TransactionManager,
   @Optional() @Inject('CONVERSATION_QUALITY') private readonly quality?:{record(entry:ReturnType<typeof summarizeTurnQuality>):void},
@@ -63,7 +64,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
   try{await this.store.open();}catch{await this.store.close();throw Error('WEIXIN_START_FAILED');}
   this.running=this.loop().catch(()=>{console.warn('Weixin channel stopped; operator review required.');});
  }
- async stop():Promise<void>{this.stopped=true;this.photoAbort.abort();this.client?.close();await this.running;if(this.client){const shutdown=new WeixinClient(this.client.credentials);try{await shutdown.post('msg/notifystop',{},3000);}catch{/* Best effort lifecycle notification. */}finally{shutdown.close();}}await this.store?.close();}
+ async stop():Promise<void>{this.stopped=true;this.mediaAbort.abort();this.client?.close();await this.running;if(this.client){const shutdown=new WeixinClient(this.client.credentials);try{await shutdown.post('msg/notifystop',{},3000);}catch{/* Best effort lifecycle notification. */}finally{shutdown.close();}}await this.store?.close();}
  private async loop():Promise<void>{
   const store=this.store!,client=this.client!;
   try{await client.post('msg/notifystart',{},10000);}catch(e){if(e instanceof WeixinError&&e.code==='AUTH_EXPIRED'){await store.error('AUTH_EXPIRED',true);return;}}
@@ -78,7 +79,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
     if(c.paused||c.auth_expired){await sleep(1000);continue;}
     const data=await client.post('getupdates',{get_updates_buf:c.cursor});
     if(!Array.isArray(data.msgs)||data.msgs.length>100||typeof data.get_updates_buf!=='string'||data.get_updates_buf.length>65536)throw new WeixinError('INVALID_BATCH');
-    await store.ingest(data.msgs.map(m=>extractText(m,client.credentials)).filter(m=>m!==null),data.get_updates_buf);
+    await store.ingest(data.msgs.map(m=>extractIncoming(m,client.credentials)).filter(m=>m!==null),data.get_updates_buf);
     this.lastPoll=Date.now();await sleep(300);
    }catch(e){if(this.stopped)break;await this.channelError(store,e);await sleep(3000);}
   }
@@ -105,9 +106,9 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
     if(!row||['uncertain','failed'].includes(row.stage)||new Date(row.retry_at).getTime()>Date.now()){await sleep(500);continue;}
     if(!this.gate.acquire()){await sleep(500);continue;}
     try{
-    const photo=photoRequest(row.turn_text??row.text)!==null,dependencies=photo?createPhotoDependencies(this.config,store,client,this.photoAbort.signal):undefined;
+    const vision=!!row.incoming_image,photo=!vision&&photoRequest(row.turn_text??row.text)!==null,dependencies=photo?createPhotoDependencies(this.config,store,client,this.mediaAbort.signal):undefined;
     if(photo&&row.reply===PHOTO_CAPTION&&!dependencies){await store.update(row.message_key,'skipped',{error:'PHOTOS_DISABLED'});continue;}
-    let finalReply:string|undefined;const voiceJobs=new WeixinVoiceStore(store,this.config.VOICE_COOLDOWN_SECONDS),voiceDeps=!photo?createVoiceDependencies(this.config,store,client,this.photoAbort.signal):undefined;
+    let finalReply:string|undefined;const voiceJobs=new WeixinVoiceStore(store,this.config.VOICE_COOLDOWN_SECONDS),voiceDeps=!photo&&!vision?createVoiceDependencies(this.config,store,client,this.mediaAbort.signal):undefined;
     const sender=photo?{send:async(key:string,context:string,text:string)=>{
      if(text!==PHOTO_CAPTION)return client.send(key,context,text);
      const job=await new WeixinPhotoStore(store).get(row);
@@ -118,6 +119,13 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
      return media?client.sendVoiceFile(key,context,media):client.send(key,context,text);
     }};
     await processWeixinMessage(row,store,sender,async(userId,text,key)=>{
+     if(vision){
+      const jobs=new WeixinVisionStore(store);
+      const deps=createVisionDependencies(this.config,store,row,()=>this.tx.runAsUser(userId as UserId,tx=>incomingImageContext(tx,userId as UserId,key)),this.mediaAbort.signal);
+      const reply=await prepareWeixinVision(row,jobs,deps);
+      return this.tx.runAsUser(userId as UserId,tx=>recordIncomingImageResponse(tx,{userId:userId as UserId,text,requestId:key,reply}));
+     }
+     const visionCommand=visionControl(text);if(visionCommand==='help')return VISION_HELP;if(visionCommand==='status')return new WeixinVisionStore(store).status(userId,this.config.VISION_MAX_PER_24H,visionConfigured(this.config));
      if(photo){
       const reply=dependencies?await prepareWeixinPhoto(row,dependencies):'照片功能还没配置好，暂时不能发图。';
       return this.tx.runAsUser(userId as UserId,tx=>recordPhotoResponse(tx,{userId:userId as UserId,text,requestId:key,reply}));

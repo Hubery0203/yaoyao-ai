@@ -41,7 +41,7 @@ export async function persistUserMessage(
     userId: input.userId,
     yaoyaoId: input.yaoyaoId,
     sessionId: input.sessionId as never,
-    payload: { text: input.text,...(timezone?{timezone}:{}) },
+    payload: { text: input.text,...(timezone?{timezone}:{}),...(input.attachment?{attachment:input.attachment}:{}) },
     source: "CLIENT",
     correlationId: input.requestId,
   });

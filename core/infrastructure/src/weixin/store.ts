@@ -2,8 +2,10 @@ import {handleOutreachControl} from './controls.js';
 import {Client,type Pool,type PoolClient} from 'pg';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {voiceCommand,photoControl,isOutreachCommandText,isCompanionCommandText,photoRequest,isMemoryCommandText,batchIsReady,isReplyCancellation,isOutreachStop,localOutreachClock,isQuietMinute,validateOutreachSettings,type OutreachSettings} from '@yaoyao/application';
+import type {IncomingImage} from './incoming-image.js';
+import {visionControl} from '@yaoyao/application';
 import type {IncomingText,WeixinCredentials} from './client.js';
-export interface WeixinRow {message_key:string;user_id:string;text:string;context_token:string;reply:string|null;stage:string;attempts:number;retry_at:Date;turn_text?:string|null;batch_key?:string|null;origin?:'reactive'|'proactive';created_at?:Date}
+export interface WeixinRow {message_key:string;user_id:string;text:string;context_token:string;reply:string|null;stage:string;attempts:number;retry_at:Date;turn_text?:string|null;batch_key?:string|null;origin?:'reactive'|'proactive';created_at?:Date;incoming_image?:IncomingImage|null}
 export class WeixinStore {
  private lock:Client|null=null;healthy=false;
  constructor(private readonly pool:Pool,readonly credentials:WeixinCredentials,private readonly connectionString:string){}
@@ -34,11 +36,22 @@ export class WeixinStore {
    for(const m of messages){
     if(m.time<Number(c.cutoff_ms)||m.time>Date.now()+300000)continue;
     if((await db.query('SELECT 1 FROM weixin_messages WHERE bot_id=$1 AND message_key=$2',[this.credentials.botId,m.key])).rowCount)continue;
+    if(m.image){
+     if(!c.user_id)continue;
+     await db.query("UPDATE weixin_messages SET stage='skipped',last_error='USER_ACTIVE' WHERE bot_id=$1 AND origin='proactive' AND stage='ready'",[this.credentials.botId]);
+     await db.query("UPDATE weixin_channels SET last_context_token=CASE WHEN last_inbound_at IS NULL OR last_inbound_at<=$3 THEN $2 ELSE last_context_token END,last_inbound_at=GREATEST(last_inbound_at,$3) WHERE bot_id=$1",[this.credentials.botId,m.contextToken,new Date(Math.min(m.time,Date.now()))]);
+     await db.query("INSERT INTO weixin_messages(bot_id,message_key,user_id,text,context_token,source_created_ms,incoming_image) VALUES($1,$2,$3,$4,$5,$6,$7)",[this.credentials.botId,m.key,c.user_id,m.text,m.contextToken,m.time,m.image]);
+     continue;
+    }
     let reply:string|null=null;
+    if(visionControl(m.text)==='skip'&&c.user_id){
+     await db.query("UPDATE weixin_messages SET stage='skipped',last_error='OWNER_SKIPPED_VISION',incoming_image=$2 WHERE bot_id=$1 AND incoming_image IS NOT NULL AND stage IN ('pending','generating','ready','uncertain','failed')",[this.credentials.botId,{status:'consumed'}]);
+     reply='已跳过未完成的看图回复；不会重新识别或发送。';
+    }
     if(isReplyCancellation(m.text)||isOutreachStop(m.text)){
      if(!c.user_id)continue;
      if(isOutreachStop(m.text))await db.query(`UPDATE weixin_channels SET outreach_settings=jsonb_set(outreach_settings,'{enabled}','false'),outreach_version=outreach_version+1 WHERE bot_id=$1`,[this.credentials.botId]);
-     await db.query("UPDATE weixin_messages SET stage='skipped',last_error='OWNER_CANCELLED',updated_at=clock_timestamp() WHERE bot_id=$1 AND stage IN ('pending','generating','ready') AND (origin='proactive' OR $2)",[this.credentials.botId,isReplyCancellation(m.text)]);
+     await db.query("UPDATE weixin_messages SET stage='skipped',last_error='OWNER_CANCELLED',incoming_image=CASE WHEN incoming_image IS NULL THEN NULL ELSE '{\"status\":\"consumed\"}'::jsonb END,updated_at=clock_timestamp() WHERE bot_id=$1 AND stage IN ('pending','generating','ready') AND (origin='proactive' OR $2)",[this.credentials.botId,isReplyCancellation(m.text)]);
      await db.query("INSERT INTO weixin_messages(bot_id,message_key,user_id,text,context_token,stage,source_created_ms) VALUES($1,$2,$3,$4,$5,'skipped',$6)",[this.credentials.botId,m.key,c.user_id,m.text,m.contextToken,m.time]);
      await db.query("UPDATE weixin_channels SET last_context_token=CASE WHEN last_inbound_at IS NULL OR last_inbound_at<=$3 THEN $2 ELSE last_context_token END,last_inbound_at=GREATEST(last_inbound_at,$3) WHERE bot_id=$1",[this.credentials.botId,m.contextToken,new Date(Math.min(m.time,Date.now()))]);
      continue;
@@ -115,10 +128,10 @@ export class WeixinStore {
   const rows=(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') ORDER BY ordinal LIMIT 10 FOR UPDATE",[this.credentials.botId])).rows;
   const first=rows[0];if(!first)return;
   if(first.stage!=='pending'||first.reply||first.turn_text)return first;
-  if(voiceCommand(first.text)!==null||photoControl(first.text)!==null||isOutreachCommandText(first.text)||isCompanionCommandText(first.text)||isMemoryCommandText(first.text)||photoRequest(first.text)!==null){await db.query('UPDATE weixin_messages SET turn_text=$3 WHERE bot_id=$1 AND message_key=$2',[this.credentials.botId,first.message_key,first.text]);return {...first,turn_text:first.text};}
+  if(first.incoming_image||visionControl(first.text)!==null||voiceCommand(first.text)!==null||photoControl(first.text)!==null||isOutreachCommandText(first.text)||isCompanionCommandText(first.text)||isMemoryCommandText(first.text)||photoRequest(first.text)!==null){await db.query('UPDATE weixin_messages SET turn_text=$3 WHERE bot_id=$1 AND message_key=$2',[this.credentials.botId,first.message_key,first.text]);return {...first,turn_text:first.text};}
   const batch=[first];let text=first.text;
   for(const row of rows.slice(1)){
-   if(voiceCommand(row.text)!==null||photoControl(row.text)!==null||isOutreachCommandText(row.text)||isCompanionCommandText(row.text)||isMemoryCommandText(row.text)||photoRequest(row.text)!==null||row.stage!=='pending'||row.reply||row.turn_text||row.origin!=='reactive'||row.user_id!==first.user_id||text.length+1+row.text.length>4000||row.created_at-first.created_at>6000)break;
+   if(row.incoming_image||visionControl(row.text)!==null||voiceCommand(row.text)!==null||photoControl(row.text)!==null||isOutreachCommandText(row.text)||isCompanionCommandText(row.text)||isMemoryCommandText(row.text)||photoRequest(row.text)!==null||row.stage!=='pending'||row.reply||row.turn_text||row.origin!=='reactive'||row.user_id!==first.user_id||text.length+1+row.text.length>4000||row.created_at-first.created_at>6000)break;
    batch.push(row);text+='\n'+row.text;
   }
   if(!batchIsReady(first.created_at,batch.at(-1)!.created_at,now))return;
