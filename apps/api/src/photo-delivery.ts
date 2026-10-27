@@ -5,6 +5,7 @@ export interface PhotoDependencies {
  files:Pick<PhotoFiles,'available'|'save'|'read'>;
  generate:(scene:string,reference:Buffer)=>Promise<Buffer>;
  reference:()=>Promise<Buffer>;
+ validate?:(scene:string,reference:Buffer)=>void;
  upload:(bytes:Buffer)=>ReturnType<typeof uploadWeixinImage>;
  limit:number;
 }
@@ -12,7 +13,7 @@ export interface PhotoDependencies {
 export async function prepareWeixinPhoto(row:WeixinRow,deps:PhotoDependencies):Promise<string>{
  const scene=photoRequest(row.text);if(scene===null)throw Error('NOT_PHOTO_REQUEST');
  // Configuration, disk permissions and reference are checked before consuming a reservation.
- let reference:Buffer;try{reference=await deps.reference();await deps.files.available();}catch{return '照片配置暂时不可用，等修好再拍。';}
+ let reference:Buffer;try{reference=await deps.reference();deps.validate?.(scene,reference);await deps.files.available();}catch(e){return e instanceof PhotoProviderError&&e.code==='INVALID_PHOTO_INPUT'?'这个照片描述暂时不支持，换个日常场景试试。':'照片配置暂时不可用，等修好再拍。';}
  const {job,fresh,denied}=await deps.jobs.reserve(row,deps.limit);
  if(denied)return '这次先不拍啦，稍后再试。';if(!job)throw Error('PHOTO_RESERVATION_MISSING');
  let current=job;
@@ -31,9 +32,9 @@ export async function prepareWeixinPhoto(row:WeixinRow,deps:PhotoDependencies):P
  }
  return PHOTO_CAPTION;
 }
-export function photoConfigured(config:AppConfig):boolean{return config.PHOTOS_ENABLED==='1'&&!!config.MINIMAX_IMAGE_API_KEY&&!!config.MINIMAX_IMAGE_REGION&&!!config.PHOTO_REFERENCE_FILE&&!!config.PHOTO_STORAGE_DIR;}
+export function photoConfigured(config:AppConfig):boolean{return config.PHOTOS_ENABLED==='1'&&!!config.MINIMAX_IMAGE_API_KEY&&!!config.MINIMAX_IMAGE_REGION&&!!config.PHOTO_REFERENCE_FILE&&!!config.PHOTO_REFERENCE_SHA256&&!!config.PHOTO_STORAGE_DIR;}
 export function createPhotoDependencies(config:AppConfig,store:WeixinStore,client:WeixinClient,signal:AbortSignal):PhotoDependencies|undefined{
  if(!photoConfigured(config))return;
  const provider=new MiniMaxImageProvider(config.MINIMAX_IMAGE_API_KEY!,config.MINIMAX_IMAGE_REGION!,config.MINIMAX_IMAGE_MODEL);
- return {jobs:new WeixinPhotoStore(store),files:new PhotoFiles(config.PHOTO_STORAGE_DIR!),reference:()=>readPrivatePhoto(config.PHOTO_REFERENCE_FILE!),generate:(scene,reference)=>provider.generate(scene,reference,signal),upload:bytes=>uploadWeixinImage(client,bytes,fetch,signal),limit:config.PHOTO_MAX_PER_24H};
+ return {jobs:new WeixinPhotoStore(store),files:new PhotoFiles(config.PHOTO_STORAGE_DIR!),reference:()=>readPrivatePhoto(config.PHOTO_REFERENCE_FILE!,config.PHOTO_REFERENCE_SHA256!),validate:(scene,reference)=>provider.validate(scene,reference),generate:(scene,reference)=>provider.generate(scene,reference,signal),upload:bytes=>uploadWeixinImage(client,bytes,fetch,signal),limit:config.PHOTO_MAX_PER_24H};
 }

@@ -1,3 +1,5 @@
+> 本文保留009E历史设计；当前MiniMax及参考指纹要求见 [照片一致性V1](photo-identity-v1.md)。
+
 # MVP-009E — reference-based photos over Weixin
 
 Implementation candidate; no production migration, paid image API check or deployment is implied by this document. 009A–D are outside this change. 006C remains postponed; proxy/public website/outreach settings stay unchanged.

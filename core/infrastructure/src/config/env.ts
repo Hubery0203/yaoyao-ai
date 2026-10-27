@@ -20,6 +20,7 @@ const EnvSchema = z.object({
   OPENAI_IMAGE_API_KEY: z.string().optional(),
   OPENAI_IMAGE_MODEL: z.enum(["gpt-image-2.5-sunburst","gpt-image-2.5-flare","gpt-image-2","gpt-image-1.5"]).default("gpt-image-2.5-sunburst"),
   PHOTO_REFERENCE_FILE: z.string().optional(),
+  PHOTO_REFERENCE_SHA256: z.preprocess(v=>v===''?undefined:v,z.string().regex(/^[a-f0-9]{64}$/).optional()),
   PHOTO_STORAGE_DIR: z.string().optional(),
   PHOTO_MAX_PER_24H: z.coerce.number().int().min(1).max(5).default(3),
   VOICE_ENABLED: z.enum(["0","1"]).default("0"),
