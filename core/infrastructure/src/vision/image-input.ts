@@ -1,5 +1,6 @@
 export const VISION_MAX_BYTES=4*1024*1024;
-export class VisionError extends Error {constructor(readonly code:string){super(code);}}
+export type VisionFailureReason='MISSING_BODY'|'RESPONSE_TOO_LARGE'|'NON_JSON'|'CONTENT_TYPE'|'EMPTY_CONTENT'|'CONTENT_TOO_LONG'|'CONTROL_CHARACTERS'|'UNSAFE_REPLY';
+export class VisionError extends Error {constructor(readonly code:string,readonly reason?:VisionFailureReason){super(code);}}
 export interface VisionImageInfo {mime:'image/png'|'image/jpeg'|'image/webp';width:number;height:number}
 /** Header-only inspection: no local decompression or native decoder on the small VPS. */
 export function inspectVisionImage(bytes:Buffer):VisionImageInfo {

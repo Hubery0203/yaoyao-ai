@@ -37,3 +37,5 @@
 服务器仍需先评估批准：备份数据库/配置后只迁移新增结构，旧30张表及数据保留；不改代理/nginx/sshd、监听端口、内存、照片参考、语音、主动联系或异机备份。回退需准备上一稳定代码加同一0015迁移文件的兼容包，因为旧版严格启动检查不能直接接受数据库新头；保留新增表和识别回执，不回滚生产数据库。正常最多一次API重启，失败时最多一次兼容回退重启，具体执行额度以本轮批准为准。006C仍搁置。
 
 协议依据：[腾讯原始图片下载实现](https://github.com/Tencent/openclaw-weixin/blob/main/src/media/media-download.ts)、[腾讯解密与密钥格式](https://github.com/Tencent/openclaw-weixin/blob/main/src/cdn/pic-decrypt.ts)、[MiniMax官方看图MCP](https://platform.minimax.cn/docs/guides/token-plan-mcp-guide)、[官方请求实现](https://github.com/MiniMax-AI/MiniMax-Coding-Plan-MCP/blob/main/minimax_mcp/server.py)。
+
+真实合成检查首轮3次中，普通描述和指令边界两次成功，单独读时间一次返回VISION_INVALID_RESPONSE。原记录不足以确定拒绝原因，不能宣称已修复或整轮通过。现已补充分支原因（空内容、类型、非JSON、长度、控制字符及不允许的回复等固定枚举），仅写入私有操作账本，不记录原始供应商返回、密钥、CDN地址或图片像素。新增离线用例确保09:30等正常OCR短答可通过；实际原因仍需另外获批后复核，不重置原3次账本。

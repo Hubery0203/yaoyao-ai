@@ -15,13 +15,16 @@ export class MiniMaxVisionProvider {
   try{response=await this.fetcher((this.region==='cn'?'https://api.minimax.cn':'https://api.minimax.io')+'/v1/coding_plan/vlm',{method:'POST',redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(45000)]):AbortSignal.timeout(45000),headers:{Authorization:'Bearer '+this.key,'Content-Type':'application/json'},body:JSON.stringify({prompt:visionPrompt(caption,context),image_url:'data:'+mime+';base64,'+bytes.toString('base64')})});}catch{throw new VisionError('VISION_RESULT_UNKNOWN');}
   try{
    if(!response.ok)throw new VisionError(response.status===401||response.status===403?'VISION_AUTH':response.status===429?'VISION_RATE_LIMITED':'VISION_PROVIDER_FAILED');
-   if(!response.body)throw new VisionError('VISION_INVALID_RESPONSE');const chunks:Uint8Array[]=[];let n=0;
-   for await(const chunk of response.body){n+=chunk.length;if(n>65536)throw new VisionError('VISION_INVALID_RESPONSE');chunks.push(chunk);}
-   let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new VisionError('VISION_INVALID_RESPONSE');}
+   if(!response.body)throw new VisionError('VISION_INVALID_RESPONSE','MISSING_BODY');const chunks:Uint8Array[]=[];let n=0;
+   for await(const chunk of response.body){n+=chunk.length;if(n>65536)throw new VisionError('VISION_INVALID_RESPONSE','RESPONSE_TOO_LARGE');chunks.push(chunk);}
+   let data;try{data=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new VisionError('VISION_INVALID_RESPONSE','NON_JSON');}
    if(!data||data.base_resp?.status_code!==0)throw new VisionError(data?.base_resp?.status_code===1004?'VISION_AUTH':'VISION_PROVIDER_FAILED');
-   if(typeof data.content!=='string'||!data.content.trim()||data.content.length>2000||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(data.content))throw new VisionError('VISION_INVALID_RESPONSE');
+   if(typeof data.content!=='string')throw new VisionError('VISION_INVALID_RESPONSE','CONTENT_TYPE');
+   if(!data.content.trim())throw new VisionError('VISION_INVALID_RESPONSE','EMPTY_CONTENT');
+   if(data.content.length>2000)throw new VisionError('VISION_INVALID_RESPONSE','CONTENT_TOO_LONG');
+   if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(data.content))throw new VisionError('VISION_INVALID_RESPONSE','CONTROL_CHARACTERS');
    // Tool/status claims and remote URLs have no authority in an image response.
-   if(/https?:\/\/|(?:已|已经)(?:为你|帮你)?(?:开启|关闭|添加|删除|更新|保存|记住)(?:了)?(?:提醒|记忆|主动联系|语音|设置)|(?:api[_ -]?key|sk-(?:proj-|api-))[=:： ]/iu.test(data.content))throw new VisionError('VISION_INVALID_RESPONSE');
+   if(/https?:\/\/|(?:已|已经)(?:为你|帮你)?(?:开启|关闭|添加|删除|更新|保存|记住)(?:了)?(?:提醒|记忆|主动联系|语音|设置)|(?:api[_ -]?key|sk-(?:proj-|api-))[=:： ]/iu.test(data.content))throw new VisionError('VISION_INVALID_RESPONSE','UNSAFE_REPLY');
    return data.content.trim();
   }finally{if(!response.body?.locked)await response.body?.cancel().catch(()=>undefined);}
  }
