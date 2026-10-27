@@ -8,11 +8,12 @@ export function imageMime(bytes:Buffer):'image/png'|'image/jpeg'{
  if(bytes.length>=4&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255&&bytes.at(-2)===255&&bytes.at(-1)===217)return 'image/jpeg';
  throw Error('INVALID_PHOTO_FORMAT');
 }
-export async function readPrivatePhoto(path:string):Promise<Buffer>{
+export async function readPrivatePhoto(path:string,expectedSha256?:string):Promise<Buffer>{
+ if(expectedSha256!==undefined&&!/^[a-f0-9]{64}$/.test(expectedSha256))throw Error('INVALID_PHOTO_REFERENCE_HASH');
  if(!isAbsolute(path))throw Error('ABSOLUTE_PHOTO_PATH_REQUIRED');
  const parent=await lstat(dirname(path));if(!parent.isDirectory()||parent.mode&0o077)throw Error('PRIVATE_PHOTO_DIRECTORY_REQUIRED');
  const f=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);
- try{const s=await f.stat();if(!s.isFile()||s.mode&0o077||s.size>PHOTO_MAX_BYTES||s.size<4)throw Error('PRIVATE_PHOTO_FILE_REQUIRED');const b=await f.readFile();if(b.length>PHOTO_MAX_BYTES)throw Error('PHOTO_TOO_LARGE');imageMime(b);return b;}finally{await f.close();}
+ try{const s=await f.stat();if(!s.isFile()||s.mode&0o077||s.size>PHOTO_MAX_BYTES||s.size<4)throw Error('PRIVATE_PHOTO_FILE_REQUIRED');const b=await f.readFile();if(b.length>PHOTO_MAX_BYTES)throw Error('PHOTO_TOO_LARGE');imageMime(b);if(expectedSha256!==undefined&&createHash('sha256').update(b).digest('hex')!==expectedSha256)throw Error('PHOTO_REFERENCE_MISMATCH');return b;}finally{await f.close();}
 }
 /** Private bounded spool; file names never derive from user-controlled paths. No HTTP file server. */
 export class PhotoFiles {
