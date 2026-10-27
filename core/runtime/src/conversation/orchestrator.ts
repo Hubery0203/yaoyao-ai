@@ -173,6 +173,7 @@ export class ConversationOrchestrator {
       }
       // Tx1a: persist USER_MESSAGE (idempotent on requestId).
       const persisted = await conversationEvents.persistUserMessage({
+        ...(input.attachment?{attachment:input.attachment}:{}),
         userId: input.userId as never,
         yaoyaoId: yaoyaoId as never,
         sessionId: input.sessionId ?? null,

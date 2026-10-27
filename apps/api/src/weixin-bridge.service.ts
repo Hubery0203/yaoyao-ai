@@ -1,3 +1,4 @@
+import {createAudioInputDependencies,recognizeIncomingAudio,audioInputConfigured} from './audio-input.js';
 import {createVisionDependencies,prepareWeixinVision,visionConfigured} from './vision-delivery.js';
 import {createVoiceDependencies,prepareWeixinVoice,voiceConfigured} from './voice-delivery.js';
 import {createPhotoDependencies,prepareWeixinPhoto,photoConfigured} from './photo-delivery.js';
@@ -8,10 +9,10 @@ import {open,stat} from 'node:fs/promises';
 import {dirname,isAbsolute} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import type {Pool} from 'pg';
-import {TRANSACTION_MANAGER,visionControl,VISION_HELP,incomingImageContext,recordIncomingImageResponse,voiceCommand,photoControl,PHOTO_HELP,isOutreachCommandText,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
+import {TRANSACTION_MANAGER,audioInputControl,AUDIO_INPUT_HELP,audioNeedsTypedConfirmation,AUDIO_CONTROL_CONFIRM,recordIncomingAudioResponse,visionControl,VISION_HELP,incomingImageContext,recordIncomingImageResponse,voiceCommand,photoControl,PHOTO_HELP,isOutreachCommandText,handleWeixinCompanionCommand,isCompanionCommandText,recordPhotoResponse,photoRequest,PHOTO_CAPTION,recordAcceptedOutreach,handleWeixinMemoryCommand,isMemoryCommandText,type TransactionManager,type OutreachSettings,type WeixinExperiencePort} from '@yaoyao/application';
 import {type UserId} from '@yaoyao/domain';
 import {CONVERSATION_ORCHESTRATOR,ConversationOrchestrator,summarizeTurnQuality,summarizeTurnPerformance} from '@yaoyao/runtime';
-import {loadConfig,WeixinVisionStore,WeixinVoiceStore,WeixinClient,WeixinStore,WeixinError,extractIncoming,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
+import {loadConfig,WeixinAudioStore,WeixinVisionStore,WeixinVoiceStore,WeixinClient,WeixinStore,WeixinError,extractIncoming,type WeixinCredentials,WeixinPhotoStore,type WeixinRow} from '@yaoyao/infrastructure';
 import {LiteRuntimeService} from './lite-runtime.service.js';
 const sleep=(ms:number)=>new Promise<void>(resolve=>{setTimeout(resolve,ms);});
 export async function readWeixinCredentials(path:string):Promise<WeixinCredentials>{
@@ -106,7 +107,7 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
     if(!row||['uncertain','failed'].includes(row.stage)||new Date(row.retry_at).getTime()>Date.now()){await sleep(500);continue;}
     if(!this.gate.acquire()){await sleep(500);continue;}
     try{
-    const vision=!!row.incoming_image,photo=!vision&&photoRequest(row.turn_text??row.text)!==null,dependencies=photo?createPhotoDependencies(this.config,store,client,this.mediaAbort.signal):undefined;
+    const audio=!!row.incoming_audio,vision=!!row.incoming_image,photo=!audio&&!vision&&photoRequest(row.turn_text??row.text)!==null,dependencies=photo?createPhotoDependencies(this.config,store,client,this.mediaAbort.signal):undefined;
     if(photo&&row.reply===PHOTO_CAPTION&&!dependencies){await store.update(row.message_key,'skipped',{error:'PHOTOS_DISABLED'});continue;}
     let finalReply:string|undefined;const voiceJobs=new WeixinVoiceStore(store,this.config.VOICE_COOLDOWN_SECONDS),voiceDeps=!photo&&!vision?createVoiceDependencies(this.config,store,client,this.mediaAbort.signal):undefined;
     const sender=photo?{send:async(key:string,context:string,text:string)=>{
@@ -125,6 +126,16 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
       const reply=await prepareWeixinVision(row,jobs,deps);
       return this.tx.runAsUser(userId as UserId,tx=>recordIncomingImageResponse(tx,{userId:userId as UserId,text,requestId:key,reply}));
      }
+     let conversationText=text;
+     if(audio){
+      const jobs=new WeixinAudioStore(store),deps=createAudioInputDependencies(this.config,store,row,this.mediaAbort.signal);
+      const recognized=await recognizeIncomingAudio(row,jobs,deps);
+      if(!recognized.ok)return this.tx.runAsUser(userId as UserId,tx=>recordIncomingAudioResponse(tx,{userId:userId as UserId,text,requestId:key,reply:recognized.reply}));
+      conversationText=recognized.text;
+      if(audioNeedsTypedConfirmation(conversationText))return this.tx.runAsUser(userId as UserId,tx=>recordIncomingAudioResponse(tx,{userId:userId as UserId,text:conversationText,requestId:key,reply:AUDIO_CONTROL_CONFIRM}));
+     }
+     if(!audio){
+     const audioCommand=audioInputControl(text);if(audioCommand==='help')return AUDIO_INPUT_HELP;if(audioCommand==='status')return new WeixinAudioStore(store).status(userId,this.config.ASR_MAX_PER_24H,audioInputConfigured(this.config));
      const visionCommand=visionControl(text);if(visionCommand==='help')return VISION_HELP;if(visionCommand==='status')return new WeixinVisionStore(store).status(userId,this.config.VISION_MAX_PER_24H,visionConfigured(this.config));
      if(photo){
       const reply=dependencies?await prepareWeixinPhoto(row,dependencies):'照片功能还没配置好，暂时不能发图。';
@@ -132,13 +143,14 @@ export class WeixinBridgeService implements OnModuleInit,WeixinExperiencePort {
      }
      if(voiceCommand(text)!==null)return (await voiceJobs.command(row,this.config.VOICE_MAX_PER_24H,voiceConfigured(this.config)))!;
      const photoCommand=photoControl(text);if(photoCommand==='help')return PHOTO_HELP;if(photoCommand==='status')return new WeixinPhotoStore(store).status(userId,this.config.PHOTO_MAX_PER_24H,photoConfigured(this.config));
-     this.gate.registerOwner(userId);
      if(isOutreachCommandText(text)){const control=await store.outreachCommand(userId,text,row.message_key);if(control!==null)return control;}
      const companion=isCompanionCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinCompanionCommand(tx,{userId:userId as UserId,text,requestId:key})):null;
      if(companion!==null)return companion;
      const command=isMemoryCommandText(text)?await this.tx.runAsUser(userId as UserId,tx=>handleWeixinMemoryCommand(tx,{userId:userId as UserId,text,requestId:key})):null;
      if(command!==null)return command;
-     const result=await this.core.converse({userId:userId as UserId,text,requestId:key,traceId:randomUUID()});
+     }
+     this.gate.registerOwner(userId);
+     const result=await this.core.converse({userId:userId as UserId,text:conversationText,requestId:key,traceId:randomUUID(),...(audio?{attachment:'voice' as const}:{})});
      try{this.quality?.record(summarizeTurnQuality(result.trace));}catch{/* Telemetry cannot fail Core replay. */}
      try{this.performance?.record(summarizeTurnPerformance(result.trace),'weixin');}catch{/* Numeric telemetry only. */}
      if(voiceDeps)await voiceJobs.register(row,result.response);

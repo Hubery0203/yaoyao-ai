@@ -88,3 +88,6 @@ export * from './voice.js';
 
 export * from './vision.js';
 export * from './usecases/incoming-image-history.js';
+
+export * from './audio-input.js';
+export * from './usecases/incoming-audio-history.js';
