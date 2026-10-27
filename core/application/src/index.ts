@@ -85,3 +85,6 @@ export {handleWeixinCompanionCommand} from './usecases/weixin-companion.js';
 export * from './outreach-commands.js';
 
 export * from './voice.js';
+
+export * from './vision.js';
+export * from './usecases/incoming-image-history.js';

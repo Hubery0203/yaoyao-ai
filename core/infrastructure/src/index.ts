@@ -60,3 +60,8 @@ export * from './weixin/voice-store.js';
 export * from './voice/minimax-speech.js';
 
 export * from './photos/minimax-image.js';
+
+export * from './vision/image-input.js';
+export * from './vision/minimax-vision.js';
+export * from './weixin/incoming-image.js';
+export * from './weixin/vision-store.js';

@@ -1,3 +1,4 @@
+import {trackTestPoolShutdown} from './close-pool.js';
 /**
  * Testcontainers harness for Phase 3 persistence integration suites.
  *
@@ -89,11 +90,12 @@ export async function setupDatabase(): Promise<TestDatabase> {
     connectionString: connectionStringFor("postgres", SUPERUSER_PASSWORD),
     max: 5,
   });
+  const closeAdminPool=trackTestPoolShutdown(adminPool);
 
   const run = await applyMigrations(adminPool, MIGRATIONS_DIR, "test-harness");
   const applied = run.applied;
   if (
-    applied.length !== 14 ||
+    applied.length !== 15 ||
     applied[0] !== "0001_initial_schema" ||
     applied[1] !== "0002_auth_lookup" ||
     applied[2] !== "0003_conversation_event_types" ||
@@ -107,7 +109,8 @@ export async function setupDatabase(): Promise<TestDatabase> {
     applied[10] !== "0011_weixin_controls" ||
     applied[11] !== "0012_photo_failures" ||
     applied[12] !== "0013_weixin_voice" ||
-    applied[13] !== "0014_voice_palette"
+    applied[13] !== "0014_voice_palette" ||
+    applied[14] !== "0015_incoming_vision"
   ) {
     throw new Error(`unexpected migration run: ${JSON.stringify(run)}`);
   }
@@ -125,6 +128,7 @@ export async function setupDatabase(): Promise<TestDatabase> {
     connectionString: connectionStringFor("yaoyao_app", APP_PASSWORD),
     max: 10,
   });
+  const closeAppPool=trackTestPoolShutdown(appPool);
   const manager = new PostgresTransactionManager(appPool);
 
   return {
@@ -134,9 +138,8 @@ export async function setupDatabase(): Promise<TestDatabase> {
     manager,
     connectionStringFor,
     teardown: async () => {
-      await appPool.end().catch(() => undefined);
-      await adminPool.end().catch(() => undefined);
-      await container.stop().catch(() => undefined);
+      try{await Promise.all([closeAppPool(),closeAdminPool()]);}
+      finally{await container.stop();}
     },
   };
 }
