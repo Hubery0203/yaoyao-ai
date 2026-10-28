@@ -1,5 +1,5 @@
 import {renderTurnVariety} from './naturalness.js';
-import {renderHistoryTurn,mediaHistoryGuidance} from './history.js';
+import {renderHistoryTurn,mediaHistoryGuidance,groundedMediaLifeReply} from './history.js';
 /**
  * ConversationOrchestrator — Canonical Runtime 10-step pipeline (MVP-002B).
  *
@@ -430,7 +430,7 @@ export class ConversationOrchestrator {
       providerFallbackUsed:telemetry.fallbackUsed||repairProviderFallback,
       fallbackUsed,
       finalResponseAccepted: true,
-      ...(groundedLifeReply(experience,input.text)?{groundedRecordReply:true}:{}),
+      ...(groundedLifeReply(experience,input.text)||groundedMediaLifeReply(input.text,conversationHistory,experience)?{groundedRecordReply:true}:{}),
       ...(fallbackUsed&&groundedCorrectionAcknowledgement(input.text)===finalResponse?{groundedCorrectionAcknowledgment:true}:{}),
     };
     executedSteps.push("behavior-validation");

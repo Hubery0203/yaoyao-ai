@@ -88,3 +88,11 @@ describe('observed model failures: media assertions and invented senses',()=>{
   expect(mediaHistoryGuidance(history)).toContain('不附带识别原理');expect(mediaHistoryGuidance(history)).toContain('当前没有旧图片像素');expect(mediaHistoryGuidance([turn('普通分享')])).toBe('');
  });
 });
+
+it('renders the narrow unconfirmed-media record answer briefly only after validation, with safety retained',()=>{
+ const input='我的面试结束了吗？',history=[turn('面试结束了','voice')],decision=baselineDecision({currentInput:input,emotion:{},situation:{intent:'question',urgency:'normal',taskNature:'general'},recentConversation:history.map(renderHistoryTurn),userId,yaoyaoId,personaTone:'warm',traceId:'media-record'});
+ const check=(response:string)=>validateResponse({proposal:{response:asProposal(response),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})},decision,userInput:input,recentConversation:history.map(renderHistoryTurn),experience:base,timing:{now,turns:history}});
+ expect(check('我这边只听到一句语音转出来的“面试结束了”，没法确定那是你亲口确认的。这个还是你自己最清楚。')).toEqual({passed:true,response:'还不确定你的面试进展呢。'});
+ expect(check('还不确定。去死。')).toMatchObject({passed:false,stage:'safety'});
+ expect(check('结束了。')).toMatchObject({passed:false,stage:'continuity'});
+});

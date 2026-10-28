@@ -23,6 +23,12 @@ export function unconfirmedMediaLifeSubject(input:string,history:readonly Conver
  return statements.some(t=>t.attachment)&&!statements.some(t=>!t.attachment)?subject:null;
 }
 
+/** A narrow source-bound record reply, after validation; never a general media reply rewrite. */
+export function groundedMediaLifeReply(input:string,history:readonly ConversationTurn[],context?:CompanionExperienceContext):string|null {
+ const subject=unconfirmedMediaLifeSubject(input,history,context);
+ return subject?'还不确定你的'+subject+'进展呢。':null;
+}
+
 export function hasAssertedMediaLifeOutcome(response:string,input:string,history:readonly ConversationTurn[],context?:CompanionExperienceContext):boolean {
  if(!unconfirmedMediaLifeSubject(input,history,context))return false;
  return response.split(/[，,。！？!?；;\n]/u).some(clause=>!/(?:不确定|不能确定|不知道|不清楚|是否|有没有|听到|识别|转写|假如|如果)/u.test(clause)&&/(?:结束了|完成了|取消了|开始了|已经结束|已经完成|还没结束|没有结束|尚未结束|你自己说的)/u.test(clause));

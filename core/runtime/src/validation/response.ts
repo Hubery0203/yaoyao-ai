@@ -1,5 +1,5 @@
 import {naturalnessFailure} from '../conversation/naturalness.js';
-import {hasAssertedMediaLifeOutcome,unconfirmedMediaLifeSubject} from '../conversation/history.js';
+import {hasAssertedMediaLifeOutcome,groundedMediaLifeReply} from '../conversation/history.js';
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse,isDirectNatureQuestion} from '../conversation/style.js';
 import {experienceResponseFailure,groundedLifeReply} from '../conversation/experience.js';
@@ -241,7 +241,7 @@ export function validateResponse(
     };
   }
 
-  return { passed: true, response: groundedLifeReply(input.experience,userInput)??(['normal','intimate'].includes(decision.conversationMode)&&['express_affection','acknowledge'].includes(decision.primaryIntent)?briefAffectionResponse(responseText,userInput):responseText) };
+  return { passed: true, response: groundedMediaLifeReply(userInput,input.timing?.turns??[],input.experience)??groundedLifeReply(input.experience,userInput)??(['normal','intimate'].includes(decision.conversationMode)&&['express_affection','acknowledge'].includes(decision.primaryIntent)?briefAffectionResponse(responseText,userInput):responseText) };
 }
 
 /**
@@ -339,7 +339,7 @@ export function buildFallbackResponse(input: {
 }): string {
   const { decision } = input;
   const grounded=groundedLifeReply(input.experience,input.userInput);if(grounded)return grounded;
-  const mediaSubject=unconfirmedMediaLifeSubject(input.userInput,input.timing?.turns??[],input.experience);if(mediaSubject)return '还不确定你的'+mediaSubject+'进展呢。';
+  const mediaReply=groundedMediaLifeReply(input.userInput,input.timing?.turns??[],input.experience);if(mediaReply)return mediaReply;
   if(residenceRecallUnknown(input.userInput,input.recentConversation??[]))return '我还不确定你现在住哪里。';
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
