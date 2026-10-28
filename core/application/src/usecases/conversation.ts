@@ -134,6 +134,7 @@ export async function loadConversationHistory(
     if (typeof payload.text !== "string") continue;
     turns.push({
       role: event.type === "USER_MESSAGE" ? "user" : "assistant",
+      ...((event.payload.attachment==='image'||event.payload.attachment==='voice')?{attachment:event.payload.attachment}:{}),
       ...(typeof event.payload.timezone==="string"?{timezone:event.payload.timezone}:{}),
       text: payload.text,
       occurredAt: event.occurredAt,

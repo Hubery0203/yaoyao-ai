@@ -1,4 +1,5 @@
 import {renderTurnVariety} from './naturalness.js';
+import {renderHistoryTurn} from './history.js';
 /**
  * ConversationOrchestrator — Canonical Runtime 10-step pipeline (MVP-002B).
  *
@@ -222,11 +223,9 @@ export class ConversationOrchestrator {
           excludeRequestId: requestId,
         })
       : [];
-    const experience=experienceForTurn(personaData.experience,input.text,conversationHistory,turnTime);
+    const experience=experienceForTurn(personaData.experience,input.text,conversationHistory,turnTime,input.attachment);
     const experienceGuidance=renderCompanionExperience(experience,input.text);
-    const recentConversationTexts = conversationHistory.map(
-      (t) => `${t.role === "user" ? "User" : "YaoYao"}: ${t.text}`,
-    );
+    const recentConversationTexts = conversationHistory.map(renderHistoryTurn);
     // MVP-002D: retrieve relevant memories. The yaoyaoId is server-resolved
     // from PersonaData (§VIII) — never trusted from client input.
     const memoryRetrieval = this.deps.memoryRetrieval ?? new EmptyMemoryRetrieval();

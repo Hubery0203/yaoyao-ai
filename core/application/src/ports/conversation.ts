@@ -13,6 +13,8 @@ import type { UserId, YaoYaoId } from "@yaoyao/domain";
 /** A single conversation turn for C6 projection (no DB internals). */
 export interface ConversationTurn {
   readonly role: "user" | "assistant";
+  /** Trusted persisted source; media remains conversation, not an asserted owner fact. */
+  readonly attachment?: 'image'|'voice';
   readonly timezone?:string;
   readonly text: string;
   readonly occurredAt: Date;

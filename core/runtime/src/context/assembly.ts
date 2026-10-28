@@ -1,4 +1,5 @@
 import {renderMessageTime} from "../conversation/continuity.js";
+import {renderHistoryTurn} from "../conversation/history.js";
 /**
  * Context Assembler — MVP-002B.
  *
@@ -235,7 +236,7 @@ export class ContextAssembler {
         : [
             "Conversation history (most recent last):",
             ...turns.map(
-              (t) => `${t.role === "user" ? "User" : "YaoYao"}: ${t.text}\n  [server receipt time UTC: ${renderMessageTime(t.occurredAt)}]`,
+              (t) => `${renderHistoryTurn(t)}\n  [server receipt time UTC: ${renderMessageTime(t.occurredAt)}]`,
             ),
           ].join("\n");
     return makeLayer("C6", LAYER_PRIORITY.C6, content);
