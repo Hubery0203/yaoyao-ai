@@ -1,4 +1,5 @@
 import {renderTurnVariety} from './naturalness.js';
+import {renderHistoryTurn,mediaHistoryGuidance,groundedMediaLifeReply} from './history.js';
 /**
  * ConversationOrchestrator — Canonical Runtime 10-step pipeline (MVP-002B).
  *
@@ -222,11 +223,9 @@ export class ConversationOrchestrator {
           excludeRequestId: requestId,
         })
       : [];
-    const experience=experienceForTurn(personaData.experience,input.text,conversationHistory,turnTime);
+    const experience=experienceForTurn(personaData.experience,input.text,conversationHistory,turnTime,input.attachment);
     const experienceGuidance=renderCompanionExperience(experience,input.text);
-    const recentConversationTexts = conversationHistory.map(
-      (t) => `${t.role === "user" ? "User" : "YaoYao"}: ${t.text}`,
-    );
+    const recentConversationTexts = conversationHistory.map(renderHistoryTurn);
     // MVP-002D: retrieve relevant memories. The yaoyaoId is server-resolved
     // from PersonaData (§VIII) — never trusted from client input.
     const memoryRetrieval = this.deps.memoryRetrieval ?? new EmptyMemoryRetrieval();
@@ -251,9 +250,10 @@ export class ConversationOrchestrator {
     const memoryContext=projectTurnMemories(retrievedMemoryContext,input.text,recentConversationTexts);
     const residenceGuidance=residenceRecallUnknown(input.text,[...selectedMemoryEvidence(memoryContext),...recentConversationTexts])?'[本轮居住地回忆：可用证据不足] 只回答“我还不确定你现在住哪里。”，到此停下。不说用户从未告知、还没说过，不讨论时区，不猜城市。':'';
     const varietyGuidance=renderTurnVariety(input.text,recentConversationTexts.slice(-6),'',situation.intent);
+    const mediaGuidance=mediaHistoryGuidance(conversationHistory,input.text);
     const assembled = this.assembler.assemble({
       data: personaData,
-      additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0)+(residenceGuidance?estimateTokens(residenceGuidance):0),
+      additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0)+(residenceGuidance?estimateTokens(residenceGuidance):0)+(mediaGuidance?estimateTokens(mediaGuidance):0),
       inputText: input.text,
       memoryContext,
       conversationHistory:focusDisclosureHistory(input.text,conversationHistory),
@@ -323,6 +323,7 @@ export class ConversationOrchestrator {
         experienceGuidance,
         varietyGuidance,
         residenceGuidance,
+        mediaGuidance,
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInputInContext:true,
@@ -412,6 +413,7 @@ export class ConversationOrchestrator {
         decision,
         experience,
         recentConversation:[...selectedMemoryEvidence(memoryContext),...recentConversationTexts],
+        timing:{now:turnTime,turns:conversationHistory},
       });
     }
     (trace as { validation?: unknown }).validation = {
@@ -428,7 +430,7 @@ export class ConversationOrchestrator {
       providerFallbackUsed:telemetry.fallbackUsed||repairProviderFallback,
       fallbackUsed,
       finalResponseAccepted: true,
-      ...(groundedLifeReply(experience,input.text)?{groundedRecordReply:true}:{}),
+      ...(groundedLifeReply(experience,input.text)||groundedMediaLifeReply(input.text,conversationHistory,experience)?{groundedRecordReply:true}:{}),
       ...(fallbackUsed&&groundedCorrectionAcknowledgement(input.text)===finalResponse?{groundedCorrectionAcknowledgment:true}:{}),
     };
     executedSteps.push("behavior-validation");

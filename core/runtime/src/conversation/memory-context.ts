@@ -50,7 +50,7 @@ export function latestUserFacts(input:string,recent:readonly string[]):ObservedF
 export function focusDisclosureHistory(input:string,history:readonly ConversationTurn[]):readonly ConversationTurn[] {
   if(!conversationStyle(input).disclosure)return history;
   const slots=new Set(observedFacts(input).map(f=>f.candidate.slot));
-  return history.filter(t=>t.role==='user'&&observedFacts(t.text).some(f=>slots.has(f.candidate.slot))).slice(-4);
+  return history.filter(t=>t.role==='user'&&!t.attachment&&observedFacts(t.text).some(f=>slots.has(f.candidate.slot))).slice(-4);
 }
 
 /** Plan-only evidence establishes neither completion nor non-completion. */

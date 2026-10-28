@@ -1,7 +1,7 @@
 import {DEFAULT_PREFERENCES,lifeExpiry,lifeIsActive,parseLifeChange,selectLifeTarget,type CompanionExperienceContext,type ConversationTurn,type LifeEvent} from '@yaoyao/application';
 import {conversationStyle,unquotedText,isSuggestionRefusal,resolvedShortChoice} from './style.js';
 /** Read-only current-turn projection, including fresh explicit changes before the queue catches up. */
-export function experienceForTurn(base:CompanionExperienceContext|undefined,input:string,history:readonly ConversationTurn[],now:Date):CompanionExperienceContext|undefined {
+export function experienceForTurn(base:CompanionExperienceContext|undefined,input:string,history:readonly ConversationTurn[],now:Date,attachment?:ConversationTurn['attachment']):CompanionExperienceContext|undefined {
  if(!base)return undefined;
  const preferences=base.preferences??{...DEFAULT_PREFERENCES};let events=[...base.lifeEvents];
  const observe=(text:string,at:Date,sequence:number,timezone:string)=>{
@@ -14,8 +14,8 @@ export function experienceForTurn(base:CompanionExperienceContext|undefined,inpu
    events=events.filter(e=>e.id!==next.id);events.push(next);
   }
  };
- for(const t of history.filter(t=>t.role==='user'&&(!base.activatedAt||t.occurredAt>=base.activatedAt)))observe(t.text,t.occurredAt,t.sequence,t.timezone??preferences.timezone);
- observe(input,now,Number.MAX_SAFE_INTEGER,preferences.timezone);
+ for(const t of history.filter(t=>t.role==='user'&&!t.attachment&&(!base.activatedAt||t.occurredAt>=base.activatedAt)))observe(t.text,t.occurredAt,t.sequence,t.timezone??preferences.timezone);
+ if(!attachment)observe(input,now,Number.MAX_SAFE_INTEGER,preferences.timezone);
  return {preferences,activatedAt:base.activatedAt,lifeEvents:events.filter(e=>lifeIsActive(e,now,preferences.timezone)).sort((a,b)=>b.sourceSequence-a.sourceSequence).slice(0,12)};
 }
 export function renderCompanionExperience(context:CompanionExperienceContext|undefined,input:string):string {

@@ -2,9 +2,9 @@ import type {UserId} from '@yaoyao/domain';
 import type {PersistenceTransaction} from '../ports/persistence/transactions.js';
 import {findCompletedTurn,loadConversationHistory,persistAssistantMessage,persistUserMessage} from './conversation.js';
 /** Owner-scoped, bounded context; no memories, credentials, full history or image bytes go to the vision provider. */
-export async function incomingImageContext(tx:PersistenceTransaction,userId:UserId,requestId:string):Promise<ReadonlyArray<{role:'user'|'assistant';text:string}>>{
+export async function incomingImageContext(tx:PersistenceTransaction,userId:UserId,requestId:string):Promise<ReadonlyArray<{role:'user'|'assistant';text:string;attachment?:'image'|'voice'}>>{
  const {yaoyaoId}=await tx.aggregates.loadOwned(userId);
- return (await loadConversationHistory(tx,{userId,yaoyaoId,limit:6,excludeRequestId:requestId})).map(t=>({role:t.role,text:t.text.slice(0,250)}));
+ return (await loadConversationHistory(tx,{userId,yaoyaoId,limit:6,excludeRequestId:requestId})).map(t=>({role:t.role,text:t.text.slice(0,250),...(t.attachment?{attachment:t.attachment}:{})}));
 }
 /** The image caption and actual final response are history, never an asserted memory/life event. */
 export async function recordIncomingImageResponse(tx:PersistenceTransaction,input:{userId:UserId;text:string;requestId:string;reply:string}):Promise<string>{

@@ -18,7 +18,8 @@ jobs:
         with:
           node-version: "24.20.0"
           cache: npm
-      - run: npm ci
+      - run: npm ci --fetch-retries=1 --fetch-timeout=60000
+        timeout-minutes: 6
       - run: npm run lint
       - run: npm run boundaries
 
@@ -31,7 +32,8 @@ jobs:
         with:
           node-version: "24.20.0"
           cache: npm
-      - run: npm ci
+      - run: npm ci --fetch-retries=1 --fetch-timeout=60000
+        timeout-minutes: 6
       - run: npm run build
       - run: npm run test:unit
       - run: npm run test:contract
@@ -99,7 +101,8 @@ jobs:
         with:
           node-version: "24.20.0"
           cache: npm
-      - run: npm ci
+      - run: npm ci --fetch-retries=1 --fetch-timeout=60000
+        timeout-minutes: 6
       - run: npm run build
       - run: npx vitest run tests/integration
 
@@ -112,7 +115,8 @@ jobs:
         with:
           node-version: "24.20.0"
           cache: npm
-      - run: npm ci
+      - run: npm ci --fetch-retries=1 --fetch-timeout=60000
+        timeout-minutes: 6
       - run: npm run build
       - run: npm run test:e2e
 
@@ -134,7 +138,8 @@ jobs:
         with:
           node-version: "24.20.0"
           cache: npm
-      - run: npm ci
+      - run: npm ci --fetch-retries=1 --fetch-timeout=60000
+        timeout-minutes: 6
       - run: npm run build
       - run: npm prune --omit=dev
       - run: node scripts/package-linux.mjs
