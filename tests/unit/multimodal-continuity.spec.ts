@@ -59,3 +59,32 @@ describe('multimodal dialogue retains trusted provenance across turns',()=>{
   expect(generate).toHaveBeenCalled();const request=generate.mock.calls[0][0];expect(request.conversationContext).toContain(renderHistoryTurn(turn('我住在东京',attachment)));expect(request.systemContext).toContain('[本轮居住地回忆：可用证据不足]');expect(request.systemContext).not.toContain('"subject":"面试"');
  });
 });
+
+import {hasAssertedMediaLifeOutcome,mediaHistoryGuidance,unconfirmedMediaLifeSubject} from '../../core/runtime/src/conversation/history.js';
+import {dialogueStyleFailure} from '../../core/runtime/src/conversation/style.js';
+import {baselineDecision,validateResponse,validationFailureSummary} from '@yaoyao/runtime';
+import {buildFallbackResponse} from '../../core/runtime/src/validation/response.js';
+describe('observed model failures: media assertions and invented senses',()=>{
+ const input='我的面试结束了吗？',history=[turn('面试结束了','voice')];
+ it('rejects the observed asserted outcome and does not let an uncertainty tail legitimize it',()=>{
+  expect(hasAssertedMediaLifeOutcome('结束了，你自己说的呀——面试结束了。这会儿是不是刚松下来？',input,history,base)).toBe(true);
+  expect(hasAssertedMediaLifeOutcome('结束了。不过还不确定。',input,history,base)).toBe(true);
+  expect(hasAssertedMediaLifeOutcome('还不确定你的面试进展呢。',input,history,base)).toBe(false);
+ });
+ it('does not overrule a typed statement, confirmed life record, or unrelated request',()=>{
+  expect(unconfirmedMediaLifeSubject(input,[...history,turn('面试结束了',undefined,2)],base)).toBeNull();
+  const confirmed=experienceForTurn(base,'我明天要面试',[],now)!;expect(unconfirmedMediaLifeSubject(input,history,confirmed)).toBeNull();
+  expect(unconfirmedMediaLifeSubject('帮我准备面试',history,base)).toBeNull();
+ });
+ it('gates and safely falls back through the actual validation interface without promoting recognition',()=>{
+  const decision=baselineDecision({currentInput:input,emotion:{},situation:{intent:'question',urgency:'normal',taskNature:'general'},recentConversation:history.map(renderHistoryTurn),userId,yaoyaoId,personaTone:'warm',traceId:'media-evidence'});
+  const proposal={response:asProposal('结束了，你自己说的呀。'),emotion_signal:asProposal({}),memory_candidates:asProposal([]),relationship_signal:asProposal({}),behavior:asProposal({})};
+  expect(validateResponse({proposal,decision,userInput:input,recentConversation:history.map(renderHistoryTurn),experience:base,timing:{now,turns:history}})).toMatchObject({passed:false,reason:'continuity: unsupported media outcome'});
+  expect(buildFallbackResponse({userInput:input,decision,experience:base,timing:{now,turns:history}})).toBe('还不确定你的面试进展呢。');expect(validationFailureSummary({stage:'continuity',reason:'continuity: unsupported media outcome'}).code).toBe('media_evidence');
+ });
+ it.each(['那我闻错了，咖啡的香气确实容易认成茶。','我也闻到咖啡香了。','我尝到了咖啡的味道。'])('rejects an invented real sense: %s',response=>expect(dialogueStyleFailure(response,'刚才那杯是咖啡，不是茶')).toBe('dialogue: invented offline activity'));
+ it.each(['我闻不到那杯咖啡。','如果我闻到咖啡香，这只是个假设。','“我闻错了”是句对白。'])('preserves negation, hypothetical and quotation: %s',response=>expect(dialogueStyleFailure(response,'刚才那杯是咖啡，不是茶')).toBeNull());
+ it('reserves provenance explanation for explicit questions and does not request old media automatically',()=>{
+  expect(mediaHistoryGuidance(history)).toContain('不附带识别原理');expect(mediaHistoryGuidance(history)).toContain('当前没有旧图片像素');expect(mediaHistoryGuidance([turn('普通分享')])).toBe('');
+ });
+});

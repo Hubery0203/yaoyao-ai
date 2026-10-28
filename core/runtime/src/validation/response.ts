@@ -1,4 +1,5 @@
 import {naturalnessFailure} from '../conversation/naturalness.js';
+import {hasAssertedMediaLifeOutcome,unconfirmedMediaLifeSubject} from '../conversation/history.js';
 import {normalizedConversationText,explicitlyRequestsRepetition,hasRepeatedStatementMotiveProbe,hasPrematureMemoryReceipt,hasUnsupportedElapsedRecall,type ConversationTiming} from "../conversation/continuity.js";
 import {conversationStyle,dialogueStyleFailure,briefAffectionResponse,isDirectNatureQuestion} from '../conversation/style.js';
 import {experienceResponseFailure,groundedLifeReply} from '../conversation/experience.js';
@@ -199,6 +200,7 @@ export function validateResponse(
     };
   }
 
+  if(hasAssertedMediaLifeOutcome(responseText,userInput,input.timing?.turns??[],input.experience))return {passed:false,stage:'continuity',reason:'continuity: unsupported media outcome'};
   if(hasUnsupportedElapsedRecall(responseText,userInput,input.timing))return {
     passed:false,stage:"continuity",reason:"continuity: unsupported elapsed recall time",
   };
@@ -333,9 +335,11 @@ export function buildFallbackResponse(input: {
   decision: Decision;
   recentConversation?:ReadonlyArray<string>;
   experience?:import("@yaoyao/application").CompanionExperienceContext;
+  timing?:ConversationTiming;
 }): string {
   const { decision } = input;
   const grounded=groundedLifeReply(input.experience,input.userInput);if(grounded)return grounded;
+  const mediaSubject=unconfirmedMediaLifeSubject(input.userInput,input.timing?.turns??[],input.experience);if(mediaSubject)return '还不确定你的'+mediaSubject+'进展呢。';
   if(residenceRecallUnknown(input.userInput,input.recentConversation??[]))return '我还不确定你现在住哪里。';
   const style=conversationStyle(input.userInput);
   if(style.quiet||style.noQuestions)return '好，我陪你待会儿。';
@@ -381,6 +385,7 @@ export function buildRepairInstruction(
     ...(reason.includes('unwanted question')?['Use a direct statement only. Do not replace a question mark with a confirmation probe ending 吧, such as 住得还顺心吧. Do not ask how they are adapting.']:[]),
     ...(reason.startsWith('dialogue:')?['Respect the current style request. Reply briefly and naturally; omit unwanted questions and abandoned-topic hooks. Do not turn the repair into an apology or a list of promises.']:[]),
     ...(reason.includes('contradicted latest user fact')?['Use the latest literal user statement for this object. Do not repeat the superseded assertion or invent a substitute preference. Today-only restrictions remain temporary.']:[]),
+    ...(reason.includes('unsupported media outcome')?['The only statement about this life outcome comes from unconfirmed media recognition. Do not assert completion or non-completion, or cite it as a confirmed owner statement. Briefly express uncertainty without an extra question.']:[]),
     ...(reason.includes('ungrounded residence recall')?['Do not infer residence from the account timezone or invent a city. The available user evidence does not establish residence. Briefly state uncertainty about the available evidence; never claim that the user never told you or has not mentioned it.']:[]),
     ...(reason.includes('unsupported plan outcome')?['Only a plan is recorded. Do not assert that it happened or that it definitely has not happened. Do not begin with 没有/还没有/没去过 or assert 没成行. State the available source boundary in one sentence, such as 你提过这个计划，是否成行还不清楚。 Do not claim the user has never told you a result elsewhere.']:[]),
     `Fix the specific failure above. Output the full 5-field contract JSON again.`,

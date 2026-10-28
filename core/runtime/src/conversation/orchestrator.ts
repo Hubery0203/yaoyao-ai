@@ -1,5 +1,5 @@
 import {renderTurnVariety} from './naturalness.js';
-import {renderHistoryTurn} from './history.js';
+import {renderHistoryTurn,mediaHistoryGuidance} from './history.js';
 /**
  * ConversationOrchestrator — Canonical Runtime 10-step pipeline (MVP-002B).
  *
@@ -250,9 +250,10 @@ export class ConversationOrchestrator {
     const memoryContext=projectTurnMemories(retrievedMemoryContext,input.text,recentConversationTexts);
     const residenceGuidance=residenceRecallUnknown(input.text,[...selectedMemoryEvidence(memoryContext),...recentConversationTexts])?'[本轮居住地回忆：可用证据不足] 只回答“我还不确定你现在住哪里。”，到此停下。不说用户从未告知、还没说过，不讨论时区，不猜城市。':'';
     const varietyGuidance=renderTurnVariety(input.text,recentConversationTexts.slice(-6),'',situation.intent);
+    const mediaGuidance=mediaHistoryGuidance(conversationHistory);
     const assembled = this.assembler.assemble({
       data: personaData,
-      additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0)+(residenceGuidance?estimateTokens(residenceGuidance):0),
+      additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0)+(residenceGuidance?estimateTokens(residenceGuidance):0)+(mediaGuidance?estimateTokens(mediaGuidance):0),
       inputText: input.text,
       memoryContext,
       conversationHistory:focusDisclosureHistory(input.text,conversationHistory),
@@ -322,6 +323,7 @@ export class ConversationOrchestrator {
         experienceGuidance,
         varietyGuidance,
         residenceGuidance,
+        mediaGuidance,
       ].join("\n\n"),
       conversationContext: assembled.promptContext.contextText,
       userInputInContext:true,
@@ -411,6 +413,7 @@ export class ConversationOrchestrator {
         decision,
         experience,
         recentConversation:[...selectedMemoryEvidence(memoryContext),...recentConversationTexts],
+        timing:{now:turnTime,turns:conversationHistory},
       });
     }
     (trace as { validation?: unknown }).validation = {

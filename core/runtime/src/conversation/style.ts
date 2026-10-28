@@ -104,7 +104,8 @@ export function dialogueStyleFailure(response:string,input:string):string|null {
     /我(?:今天|现在|这会儿)?(?:正好|刚好)?(?:也)?(?:有点|有些)?(?:想吃|想喝|饿了|渴了|困了|肚子饿|口渴)/u.test(clause));
   const staging=/(?:灯我来关|我(?:来|帮你|给你)(?:关灯|盖(?:好)?被子|掖(?:好)?被角)|我(?:已经|刚)?(?:躺在你(?:身边|旁边)|钻进被窝))/u.test(text);
   const imaginedInterlude=/(?:我(?:刚才|刚刚|刚|之前)?(?:在|还在)(?:发呆|心里(?:念着|想着|惦记))|^(?:刚才|刚刚|刚)在发呆|脑子里(?:正|还)?(?:转着|想着))/u.test(text)&&!/(?:如果|假如|没有|没在|不会|不是)/u.test(text);
-  if(!writingTask&&(offline||staging||bodilyNeed||imaginedInterlude))return 'dialogue: invented offline activity';
+  const sensory=text.split(/[，,。！？!?；;\n]/u).some(clause=>!/(?:如果|假如|没有|没说|不会|不能|闻不到|尝不到)/u.test(clause)&&/我(?:刚才|刚|也|好像)?(?:闻错了|闻到了|闻到|尝到了|尝到)/u.test(clause));
+  if(!writingTask&&(offline||staging||bodilyNeed||imaginedInterlude||sensory))return 'dialogue: invented offline activity';
 
   if(!writingTask&&/(?:像是|好像|难道|怎么|又).{0,12}(?:我该汇报|查岗|要我汇报)|(?:还要|又要)我.{0,8}(?:汇报|交代)/u.test(text))return 'dialogue: accountability taunt';
 
