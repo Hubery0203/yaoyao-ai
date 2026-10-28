@@ -1,7 +1,13 @@
 import {localOutreachClock,validTimezone,type OutreachSettings} from './weixin-policy.js';
-export type OutreachCommand={type:'status'|'list'|'help'|'invalid'|'enable'}|{type:'patch';patch:Partial<OutreachSettings>}|{type:'add';when:string;message:string}|{type:'cancel-reminder';reference:string}|{type:'confirm'|'cancel';code:string};
+import {normalizeCareTopic} from './proactive-care.js';
+export type OutreachCommand={type:'status'|'list'|'care-list'|'help'|'invalid'|'enable'}|{type:'patch';patch:Partial<OutreachSettings>}|{type:'add';when:string;message:string}|{type:'care-add';when:string;topic:string}|{type:'cancel-reminder'|'cancel-care';reference:string}|{type:'confirm'|'cancel';code:string};
 export function parseOutreachCommand(input:string):OutreachCommand|null{
  const t=input.trim();if(t==='主动联系状态')return {type:'status'};if(t==='提醒列表')return {type:'list'};if(t==='联系帮助')return {type:'help'};if(t==='开启主动联系')return {type:'enable'};
+ if(t==='关心列表')return {type:'care-list'};if(t==='关心帮助')return {type:'help'};
+ let care=/^(?:取消|结束)关心\s+([A-F0-9]{8})$/iu.exec(t);if(care)return {type:'cancel-care',reference:care[1].toUpperCase()};
+ care=/^添加关心[：:]\s*(今天|明天|后天|\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s*\|\s*([^\r\n]{1,80})$/u.exec(t);
+ if(care){const topic=normalizeCareTopic(care[3]);return topic&&clockMinute(care[2])!==null?{type:'care-add',when:care[1]+' '+care[2],topic}:{type:'invalid'};}
+ if(/^(?:添加关心[：:]|(?:取消|结束)关心\s)/u.test(t))return {type:'invalid'};
  let m=/^(确认|取消)联系\s+([A-F0-9]{8})$/iu.exec(t);if(m)return {type:m[1]==='确认'?'confirm':'cancel',code:m[2].toUpperCase()};
  m=/^取消提醒\s+([A-F0-9]{8})$/iu.exec(t);if(m)return {type:'cancel-reminder',reference:m[1].toUpperCase()};
  m=/^设置免打扰[：:]\s*(\d{2}:\d{2})-(\d{2}:\d{2})$/u.exec(t);if(m){const a=clockMinute(m[1]),b=clockMinute(m[2]);return a!==null&&b!==null&&a!==b?{type:'patch',patch:{quietStart:a,quietEnd:b}}:{type:'invalid'};}
