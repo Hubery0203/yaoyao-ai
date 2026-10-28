@@ -94,7 +94,7 @@ export class WeixinStore {
    await db.query('UPDATE weixin_channels SET cursor=$2,last_error=NULL,updated_at=clock_timestamp() WHERE bot_id=$1',[this.credentials.botId,cursor]);
   });
  }
- next():Promise<WeixinRow|undefined>{return this.tx(async db=>(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') ORDER BY ordinal LIMIT 1",[this.credentials.botId])).rows[0]);}
+ next():Promise<WeixinRow|undefined>{return this.tx(async db=>(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') AND NOT(origin='proactive' AND COALESCE(outreach_reason LIKE 'care:%',false) AND stage IN ('uncertain','failed')) ORDER BY ordinal LIMIT 1",[this.credentials.botId])).rows[0]);}
  async update(key:string,stage:string,options:{reply?:string;error?:string;ack?:string;delay?:number;attempt?:boolean}={}):Promise<void>{
   await this.tx(async db=>{await db.query('UPDATE weixin_messages SET stage=$3,reply=COALESCE($4,reply),last_error=$5,ack_level=COALESCE($6,ack_level),retry_at=clock_timestamp()+$7*interval \'1 millisecond\',attempts=attempts+$8,updated_at=clock_timestamp() WHERE bot_id=$1 AND (message_key=$2 OR batch_key=$2) AND stage<>\'skipped\'',[this.credentials.botId,key,stage,options.reply??null,options.error??null,options.ack??null,options.delay??0,options.attempt?1:0]);});
  }
@@ -130,7 +130,7 @@ export class WeixinStore {
  async claimBatch(now=new Date()):Promise<WeixinRow|undefined>{return this.tx(async db=>{
   const c=(await db.query('SELECT paused,auth_expired FROM weixin_channels WHERE bot_id=$1 FOR UPDATE',[this.credentials.botId])).rows[0];
   if(c.paused||c.auth_expired)return;
-  const rows=(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') ORDER BY ordinal LIMIT 10 FOR UPDATE",[this.credentials.botId])).rows;
+  const rows=(await db.query("SELECT * FROM weixin_messages WHERE bot_id=$1 AND batch_key IS NULL AND stage NOT IN ('accepted','confirmed','skipped') AND NOT(origin='proactive' AND COALESCE(outreach_reason LIKE 'care:%',false) AND stage IN ('uncertain','failed')) ORDER BY ordinal LIMIT 10 FOR UPDATE",[this.credentials.botId])).rows;
   const first=rows[0];if(!first)return;
   if(first.stage!=='pending'||first.reply||first.turn_text)return first;
   if(first.incoming_audio||audioInputControl(first.text)!==null||first.incoming_image||visionControl(first.text)!==null||voiceCommand(first.text)!==null||photoControl(first.text)!==null||isOutreachCommandText(first.text)||isCompanionCommandText(first.text)||isMemoryCommandText(first.text)||photoRequest(first.text)!==null){await db.query('UPDATE weixin_messages SET turn_text=$3 WHERE bot_id=$1 AND message_key=$2',[this.credentials.botId,first.message_key,first.text]);return {...first,turn_text:first.text};}

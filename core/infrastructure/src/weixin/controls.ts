@@ -1,6 +1,6 @@
 import {randomBytes,randomUUID} from 'node:crypto';
 import type {PoolClient} from 'pg';
-import {confirmCare,type CarePayload} from './care-controls.js';
+import {confirmCare,endCare,type CarePayload} from './care-controls.js';
 import {parseOutreachCommand,outreachDue,reminderReference,formatMinute,validateOutreachSettings,type OutreachSettings} from '@yaoyao/application';
 interface ControlStore {readonly credentials:{botId:string};tx<T>(fn:(db:PoolClient)=>Promise<T>):Promise<T>;}
 const HELP='主动联系状态 / 提醒列表 / 关心列表\n开启主动联系 / 暂停主动联系 / 关闭主动联系\n设置免打扰：22:00-08:00\n设置联系时区：Asia/Tokyo\n设置联系上限：1（或2）\n设置问候：09:00（或关闭）\n添加提醒：明天 09:00 | 记得带伞\n取消提醒 编号\n添加关心：明天 18:00 | 面试\n结束关心 编号（或取消关心）\n开启、设置和添加均先预览，再确认联系/取消联系。\n最多3件待关心事项，到时只尝试联系一次；超过30分钟不补发，不回复也不再催。与提醒、问候共用原每日额度，提醒优先。\n联系受免打扰、额度、停聊10分钟及微信会话有效期限制，不能保证准时送达。';
@@ -24,9 +24,9 @@ export async function handleOutreachControl(store:ControlStore,user:string,text:
   if(cmd.type==='status')reply=settingsText(s)+(c.paused?'\n整个微信通道已暂停。':'')+(c.auth_expired?'\n微信授权已过期。':'')+'\n开启不保证准时送达；受会话、安静时段、停聊10分钟和额度限制。';
   else if(cmd.type==='list'||cmd.type==='care-list'){
    const care=cmd.type==='care-list',label=care?'关心事项':'提醒';
-   const rows=(await db.query("SELECT f.*,m.stage AS delivery_stage FROM weixin_followups f LEFT JOIN weixin_messages m ON m.bot_id=f.bot_id AND m.message_key=f.message_key WHERE f.bot_id=$1 AND f.user_id=$2 AND f.kind=$3 ORDER BY CASE WHEN f.stage='pending' THEN 0 WHEN f.stage='queued' AND m.stage IN ('ready','sending','uncertain','failed') THEN 1 ELSE 2 END,f.created_at DESC,f.id DESC LIMIT 25",[bot,user,care?'care':'reminder'])).rows;
+   const rows=(await db.query("SELECT f.*,m.stage AS delivery_stage,m.last_error AS delivery_error FROM weixin_followups f LEFT JOIN weixin_messages m ON m.bot_id=f.bot_id AND m.message_key=f.message_key WHERE f.bot_id=$1 AND f.user_id=$2 AND f.kind=$3 ORDER BY CASE WHEN f.stage='pending' THEN 0 WHEN f.stage='queued' AND m.stage IN ('ready','sending','uncertain','failed') THEN 1 ELSE 2 END,f.created_at DESC,f.id DESC LIMIT 25",[bot,user,care?'care':'reminder'])).rows;
    const names:Record<string,string>={pending:'待到期',queued:'排队中',cancelled:'已取消',expired:'已过期',ready:'待发送',sending:'发送中，不能保证撤回',accepted:'接口已接受（非送达确认）',confirmed:'本人已确认',uncertain:'结果不确定，不自动重发',failed:'发送失败',skipped:'已跳过'};
-   reply=rows.length?'最近25条'+label+'（'+s.timezone+'）：\n'+rows.map(r=>reminderReference(r.id)+' '+dateText(r.due_at,s.timezone)+' '+(r.stage==='pending'?(r.expires_at<=now?'已过期':c.outreach_since&&r.due_at<c.outreach_since?'已错过启用时间，不补发':r.due_at<=now?'已到期，等待允许联系':'待到期'):(names[r.delivery_stage??r.stage]??'未知状态'))+'\n'+(r.message.length>80?r.message.slice(0,80)+'…':r.message)).join('\n'):'目前没有'+label+'。';
+   reply=rows.length?'最近25条'+label+'（'+s.timezone+'）：\n'+rows.map(r=>reminderReference(r.id)+' '+dateText(r.due_at,s.timezone)+' '+(String(r.delivery_error??'').startsWith('OWNER_ENDED_CARE_UNCERTAIN:')?'已结束等待，原发送结果不确定，不重发':String(r.delivery_error??'').startsWith('OWNER_ENDED_CARE_FAILED:')?'已结束，原发送失败，不重发':r.stage==='pending'?(r.expires_at<=now?'已过期':c.outreach_since&&r.due_at<c.outreach_since?'已错过启用时间，不补发':r.due_at<=now?'已到期，等待允许联系':'待到期'):(names[r.delivery_stage??r.stage]??'未知状态'))+'\n'+(r.message.length>80?r.message.slice(0,80)+'…':r.message)).join('\n'):'目前没有'+label+'。';
   }else if(cmd.type==='enable'||cmd.type==='patch'){
    const next={...s,...(cmd.type==='patch'?cmd.patch:{enabled:true})};if(!validateOutreachSettings(next))reply='设置格式不对，请发“联系帮助”。';else if(JSON.stringify(next)===JSON.stringify(s))reply='已经是这个设置。';else{payload={kind:'settings',settings:next};reply='将改为：\n'+settingsText(next)+'\n开启后只处理设置生效后的到期事项；旧事项不会补发。';}
   }else if(cmd.type==='add'){
@@ -42,7 +42,7 @@ export async function handleOutreachControl(store:ControlStore,user:string,text:
   }else if(cmd.type==='cancel-reminder'||cmd.type==='cancel-care'){
    const care=cmd.type==='cancel-care',label=care?'关心事项':'提醒';
    const matches=(await db.query("SELECT id FROM weixin_followups WHERE bot_id=$1 AND user_id=$2 AND upper(right(replace(id::text,'-',''),8))=$3 AND kind=$4",[bot,user,cmd.reference,care?'care':'reminder'])).rows;
-   reply=matches.length!==1?'编号不明确，请先看“'+(care?'关心列表':'提醒列表')+'”。':await cancelReminder(db,bot,user,matches[0].id)?'已取消这条'+label+'。':'这条'+label+'已结束或进入发送边界，不能保证撤回；不会重新发送。';
+   reply=matches.length!==1?'编号不明确，请先看“'+(care?'关心列表':'提醒列表')+'”。':care?await endCare(db,bot,user,matches[0].id):await cancelReminder(db,bot,user,matches[0].id)?'已取消这条'+label+'。':'这条'+label+'已结束或进入发送边界，不能保证撤回；不会重新发送。';
   }else if(cmd.type==='confirm'||cmd.type==='cancel'){
    const a=(await db.query('SELECT * FROM weixin_controls WHERE bot_id=$1 AND user_id=$2 AND code=$3 FOR UPDATE',[bot,user,cmd.code])).rows[0];
    if(!a||a.status!=='pending'||a.expires_at<=now)reply='这个联系确认码已失效，请重新操作。';

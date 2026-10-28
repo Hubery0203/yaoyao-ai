@@ -2,6 +2,27 @@ import {randomUUID} from 'node:crypto';
 import type {PoolClient} from 'pg';
 import {CARE_WINDOW_MS,careMessage,normalizeCareTopic,reminderReference,type OutreachSettings} from '@yaoyao/application';
 export interface CarePayload {kind:'care';dueAt:string;topic:string;timezone:string}
+/** An explicit owner action ends waiting; it never recalls or retries an uncertain send. */
+export async function endCare(db:PoolClient,bot:string,user:string,id:string):Promise<string>{
+ const job=(await db.query("SELECT * FROM weixin_followups WHERE bot_id=$1 AND user_id=$2 AND id=$3 AND kind='care' FOR UPDATE",[bot,user,id])).rows[0];
+ if(!job||['cancelled','expired'].includes(job.stage))return '这条关心已经结束，不会再联系。';
+ if(job.message_key){
+  const m=(await db.query('SELECT * FROM weixin_messages WHERE bot_id=$1 AND user_id=$2 AND message_key=$3 FOR UPDATE',[bot,user,job.message_key])).rows[0];
+  if(!m)return '发送记录不完整，先保留原状态，不会重新发送。';
+  if(m.stage==='sending')return '这条关心正在发送，不能保证撤回；结果不明时不会自动重发。';
+  if(m.stage==='accepted')return '这条关心已获微信接口接受，手机是否收到尚未确认；不会继续催问。';
+  if(m.stage==='confirmed')return '这条关心已确认收到，不会继续催问。';
+  if(['uncertain','failed'].includes(m.stage)){
+   await db.query("UPDATE weixin_messages SET stage='skipped',last_error=$4,updated_at=clock_timestamp() WHERE bot_id=$1 AND user_id=$2 AND message_key=$3",[bot,user,m.message_key,'OWNER_ENDED_CARE_'+m.stage.toUpperCase()+':'+(m.last_error??'')]);
+   await db.query("UPDATE weixin_followups SET stage='cancelled' WHERE bot_id=$1 AND id=$2",[bot,id]);
+   return '已结束这条关心的等待。原发送记录和额度保留，不能保证撤回；不会重发。';
+  }
+  if(!['ready','skipped'].includes(m.stage))return '这条关心的发送状态需要确认，先不修改或重发。';
+  await db.query("UPDATE weixin_messages SET stage='skipped',last_error='OWNER_CANCELLED' WHERE bot_id=$1 AND message_key=$2 AND stage='ready'",[bot,m.message_key]);
+ }
+ await db.query("UPDATE weixin_followups SET stage='cancelled' WHERE bot_id=$1 AND id=$2",[bot,id]);
+ return '已取消这条关心事项。';
+}
 /** Called under the owning channel lock; creation and the control receipt share a transaction. */
 export async function confirmCare(db:PoolClient,bot:string,user:string,p:CarePayload,s:OutreachSettings,now:Date):Promise<{reply:string;applied:boolean}>{
  const due=new Date(p.dueAt),topic=normalizeCareTopic(p.topic);

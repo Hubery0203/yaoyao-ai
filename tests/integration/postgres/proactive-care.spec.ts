@@ -1,4 +1,5 @@
-import {afterAll,beforeAll,beforeEach,describe,it,expect} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,it,expect,vi} from 'vitest';
+import {processWeixinMessage} from '../../../apps/api/src/weixin-bridge.service.js';
 import {createHash} from 'node:crypto';
 import {initializeYaoYao,DEFAULT_OUTREACH,CARE_WINDOW_MS,careMessage,reminderReference,recordAcceptedOutreach,type OutreachSettings} from '@yaoyao/application';
 import {newUserId} from '@yaoyao/domain';
@@ -89,5 +90,19 @@ describe.skipIf(!docker)('confirmed proactive care: real queue, timing, ownershi
  it('rechecks the bound owner even for an already queued care message',async()=>{
   const job=await add(),now=await due(job.id);await store.scheduleOutreach(now);const row=(await outbound())[0];await db.adminPool.query('UPDATE weixin_channels SET user_id=$1',[other]);
   try{expect(await store.beginSend(row.message_key)).toBe(false);expect((await outbound())[0].stage).toBe('skipped');}finally{await db.adminPool.query('UPDATE weixin_channels SET user_id=$1',[uid]);}
+ });
+ it('keeps real incoming commands/chat flowing past unresolved care without retrying or resetting its receipt',async()=>{
+  const job=await add(),now=await due(job.id);await store.scheduleOutreach(now);const original=(await outbound())[0];await store.beginSend(original.message_key);await store.update(original.message_key,'uncertain',{error:'SEND_RESULT_UNKNOWN'});
+  const listing=message('关心列表');await store.ingest([listing],'after-uncertain-care');expect((await store.next())?.message_key).toBe(listing.key);const claimed=(await store.claimBatch(new Date(Date.now()+2000)))!;expect(claimed.message_key).toBe(listing.key);expect(await store.outreachCommand(uid,claimed.turn_text??claimed.text,claimed.message_key)).toContain('结果不确定');await store.update(claimed.message_key,'accepted');expect((await outbound())[0]).toMatchObject({stage:'uncertain',send_attempted:true,attempts:1});
+  const chat=message('我回来了');await store.ingest([chat],'normal-chat-after-care');expect((await store.claimBatch(new Date(Date.now()+2000)))?.message_key).toBe(chat.key);await store.update(chat.key,'accepted');
+  expect(await cmd('结束关心 '+reminderReference(job.id))).toContain('原发送记录和额度保留');expect((await outbound())[0]).toMatchObject({stage:'skipped',send_attempted:true,attempts:1,last_error:'OWNER_ENDED_CARE_UNCERTAIN:SEND_RESULT_UNKNOWN'});expect(await cmd('关心列表')).toContain('原发送结果不确定');
+  const next=await add('项目'),later=await due(next.id);await store.scheduleOutreach(later);expect(await outbound()).toHaveLength(1);
+ });
+ it('retains the existing barrier for unrelated uncertain sends with a null reason',async()=>{
+  const job=await add(),now=await due(job.id);await store.scheduleOutreach(now);const original=(await outbound())[0];await db.adminPool.query("UPDATE weixin_messages SET stage='uncertain',outreach_reason=NULL WHERE message_key=$1",[original.message_key]);await store.ingest([message('我回来了')],'unrelated-barrier');expect((await store.claimBatch(new Date(Date.now()+2000)))?.message_key).toBe(original.message_key);
+ });
+ it('uses the actual delivery state machine once without calling Core, then records only accepted assistant history',async()=>{
+  const before=(await db.adminPool.query("SELECT count(*) FILTER(WHERE type='ASSISTANT_MESSAGE')::int assistants,count(*) FILTER(WHERE type='USER_MESSAGE')::int users FROM events WHERE user_id=$1",[uid])).rows[0];const job=await add(),now=await due(job.id);await store.scheduleOutreach(now);const row=(await store.claimBatch())!;expect(row.origin).toBe('proactive');const send=vi.fn(async()=>({ret:0})),core=vi.fn(async()=>{throw Error('No model call permitted for a care message');});await processWeixinMessage(row,store,{send},core);expect(send).toHaveBeenCalledWith(row.message_key,'context',careMessage('面试'));expect(core).not.toHaveBeenCalled();expect((await outbound())[0].stage).toBe('accepted');
+  expect(await cmd('结束关心 '+reminderReference(job.id))).toContain('手机是否收到尚未确认');const history=(await store.nextOutreachHistory())!;await db.manager.runAsUser(uid,tx=>recordAcceptedOutreach(tx,{userId:uid,key:history.message_key,text:history.reply!}));await store.outreachHistoryRecorded(history.message_key);expect(await store.nextOutreachHistory()).toBeUndefined();expect((await db.adminPool.query("SELECT count(*)::int n FROM events WHERE user_id=$1 AND type='ASSISTANT_MESSAGE'",[uid])).rows[0].n).toBe(before.assistants+1);expect((await db.adminPool.query("SELECT * FROM events WHERE user_id=$1 AND type='USER_MESSAGE'",[uid])).rows).toHaveLength(before.users);
  });
 });
