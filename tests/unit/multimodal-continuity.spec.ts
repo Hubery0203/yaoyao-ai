@@ -108,3 +108,9 @@ describe('final replay and old-image detail boundaries',()=>{
   expect(hasAssertedMediaLifeOutcome(response,input,h,base)).toBe(false);expect(hasAssertedMediaLifeOutcome('“面试结束了”是转写。你已经结束了。',input,h,base)).toBe(true);
  });
 });
+it('does not justify a corrected image judgement with an invented color comparison',()=>{
+ const history=[turn('[微信图片]','image'),{...turn('这杯茶看着好香。'),role:'assistant' as const}];
+ expect(hasUnsupportedMediaDetail('看错了，那杯咖啡颜色确实有点像茶。','刚才那杯是咖啡，不是茶',history)).toBe(true);
+ expect(mediaHistoryGuidance(history,'刚才那杯是咖啡，不是茶')).toContain('不要为看错找理由');
+ expect(mediaHistoryGuidance(history,'帮我解释照片构图')).not.toContain('本轮在纠正');
+});

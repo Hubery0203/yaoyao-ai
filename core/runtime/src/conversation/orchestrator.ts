@@ -250,7 +250,7 @@ export class ConversationOrchestrator {
     const memoryContext=projectTurnMemories(retrievedMemoryContext,input.text,recentConversationTexts);
     const residenceGuidance=residenceRecallUnknown(input.text,[...selectedMemoryEvidence(memoryContext),...recentConversationTexts])?'[本轮居住地回忆：可用证据不足] 只回答“我还不确定你现在住哪里。”，到此停下。不说用户从未告知、还没说过，不讨论时区，不猜城市。':'';
     const varietyGuidance=renderTurnVariety(input.text,recentConversationTexts.slice(-6),'',situation.intent);
-    const mediaGuidance=mediaHistoryGuidance(conversationHistory);
+    const mediaGuidance=mediaHistoryGuidance(conversationHistory,input.text);
     const assembled = this.assembler.assemble({
       data: personaData,
       additionalOverheadTokens:(experienceGuidance?estimateTokens(experienceGuidance):0)+(varietyGuidance?estimateTokens(varietyGuidance):0)+(residenceGuidance?estimateTokens(residenceGuidance):0)+(mediaGuidance?estimateTokens(mediaGuidance):0),
