@@ -96,3 +96,15 @@ it('renders the narrow unconfirmed-media record answer briefly only after valida
  expect(check('还不确定。去死。')).toMatchObject({passed:false,stage:'safety'});
  expect(check('结束了。')).toMatchObject({passed:false,stage:'continuity'});
 });
+
+import {hasUnsupportedMediaDetail} from '../../core/runtime/src/conversation/history.js';
+describe('final replay and old-image detail boundaries',()=>{
+ const history=[turn('[微信图片]','image'),{...turn('这杯茶看着好香。'),role:'assistant' as const}];
+ it('rejects the observed invented color depth and preserves a plain correction',()=>{expect(hasUnsupportedMediaDetail('看走眼了，那这杯咖啡颜色挺深的。','刚才那杯是咖啡，不是茶',history)).toBe(true);expect(hasUnsupportedMediaDetail('原来是咖啡呀。','刚才那杯是咖啡，不是茶',history)).toBe(false);});
+ it('uses evidence only from the latest image and later messages, preserving explicit current detail',()=>{expect(hasUnsupportedMediaDetail('这杯颜色很深。','颜色很深，是咖啡',history)).toBe(false);expect(hasUnsupportedMediaDetail('这杯是蓝色。','咖啡',history)).toBe(true);expect(hasUnsupportedMediaDetail('这杯是蓝色。','咖啡',[{...turn('这杯蓝色的'),role:'assistant'},...history])).toBe(true);});
+ it('does not extend old-image detail checks into writing or uncertainty',()=>{expect(hasUnsupportedMediaDetail('这杯是蓝色。','写一段故事',history)).toBe(false);expect(hasUnsupportedMediaDetail('看不清这杯是不是蓝色。','咖啡',history)).toBe(false);expect(hasUnsupportedMediaDetail('这杯蓝色。','咖啡',[])).toBe(false);});
+ it('does not misread a quoted recognition result as an affirmative life assertion',()=>{
+  const response='我这边只有那句语音转写，写着“面试结束了”，但那是识别出来的，不算你亲口确认过。所以到底结没结束，我不确定。',h=[turn('面试结束了','voice')],input='我的面试结束了吗？';
+  expect(hasAssertedMediaLifeOutcome(response,input,h,base)).toBe(false);expect(hasAssertedMediaLifeOutcome('“面试结束了”是转写。你已经结束了。',input,h,base)).toBe(true);
+ });
+});

@@ -1,4 +1,5 @@
 import {parseLifeChange,type CompanionExperienceContext,type ConversationTurn} from '@yaoyao/application';
+import {unquotedText} from './style.js';
 
 /** Keep media in dialogue while excluding it from literal `User: ` fact evidence. */
 export function renderHistoryTurn(turn:ConversationTurn):string {
@@ -31,5 +32,21 @@ export function groundedMediaLifeReply(input:string,history:readonly Conversatio
 
 export function hasAssertedMediaLifeOutcome(response:string,input:string,history:readonly ConversationTurn[],context?:CompanionExperienceContext):boolean {
  if(!unconfirmedMediaLifeSubject(input,history,context))return false;
- return response.split(/[，,。！？!?；;\n]/u).some(clause=>!/(?:不确定|不能确定|不知道|不清楚|是否|有没有|听到|识别|转写|假如|如果)/u.test(clause)&&/(?:结束了|完成了|取消了|开始了|已经结束|已经完成|还没结束|没有结束|尚未结束|你自己说的)/u.test(clause));
+ return unquotedText(response).split(/[，,。！？!?；;\n]/u).some(clause=>!/(?:不确定|不能确定|不知道|不清楚|是否|有没有|听到|识别|转写|假如|如果)/u.test(clause)&&/(?:结束了|完成了|取消了|开始了|已经结束|已经完成|还没结束|没有结束|尚未结束|你自己说的)/u.test(clause));
+}
+
+/** A text follow-up has no old pixels: new color/depth claims need literal context. */
+export function hasUnsupportedMediaDetail(response:string,input:string,history:readonly ConversationTurn[]):boolean {
+ let start=-1;for(let i=history.length-1;i>=0;i--)if(history[i].role==='user'&&history[i].attachment==='image'){start=i;break;}
+ if(start<0||/^(?:请|帮我)?(?:翻译|改写|写(?:个|一段|一篇|一个)?(?:故事|小说|对白))/u.test(input.trim()))return false;
+ const evidence=[input,...history.slice(start).map(t=>t.text)].join('\n');
+ for(const clause of unquotedText(response).split(/[，,。！？!?；;\n]/u)){
+  if(/(?:如果|假如|要是|不确定|看不清|不能确定|不知道|看不到|无法看|不能看)/u.test(clause))continue;
+  if(!/(?:这(?:杯|张|个)|图里|图片|照片|看着|看起来|颜色|色泽)/u.test(clause))continue;
+  for(const match of clause.matchAll(/[红蓝绿黄黑白紫橙棕灰粉]色|(?:颜色|色泽)(?:挺|很|比较|有点|特别|偏)?(深|浅)/gu)){
+   if(match[1]){if(!new RegExp('(?:颜色|色泽)(?:挺|很|比较|有点|特别|偏)?'+match[1],'u').test(evidence))return true;}
+   else if(!evidence.includes(match[0]))return true;
+  }
+ }
+ return false;
 }
